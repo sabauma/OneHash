@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE RecursiveDo                #-}
 module OneHash
   ( Reg (..)
   , Scratches (..)
@@ -26,6 +25,7 @@ module OneHash
   , reverseReg
   ) where
 
+import           Prelude                hiding (break)
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Fix      (mfix)
@@ -63,10 +63,6 @@ data Flattened
   | CaseF Int
   deriving (Show)
 
-isLabel :: Ins -> Bool
-isLabel Label{} = True
-isLabel _       = False
-
 computeMapping :: Instructions -> [(String, Int)]
 computeMapping = mapMaybe f . enumInstructions
   where
@@ -87,20 +83,19 @@ lookupFail = (fromJust .) . lookup
 
 -- Compute the absolute jump locations from the specification given here
 computeAddrs :: Instructions -> [Flattened]
-computeAddrs xs = map (uncurry relativizeLabel) $ enumInstructions rest
+computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
   where
     relativizeLabel n (Jump x)
-      | m > n                        = ForwardF  (m - n)
-      | otherwise                    = BackwardF (n - m)
+      | m > n                        = [ForwardF  (m - n)]
+      | otherwise                    = [BackwardF (n - m)]
       where m = lookupFail x mapping
-    relativizeLabel n (Case r)       = CaseF (regIndex r)
-    relativizeLabel _ (Add1 r)       = Add1F (regIndex r)
-    relativizeLabel _ (AddH r)       = AddHF (regIndex r)
+    relativizeLabel _ (Case r)       = [CaseF (regIndex r)]
+    relativizeLabel _ (Add1 r)       = [Add1F (regIndex r)]
+    relativizeLabel _ (AddH r)       = [AddHF (regIndex r)]
+    relativizeLabel _ _              = []
 
     -- Maps labels to instruction indices
     mapping = computeMapping xs
-    -- Instructions minus labels
-    rest    = filter (not . isLabel) xs
 
 unary :: Int -> String
 unary n = replicate n '1'
@@ -162,7 +157,9 @@ mkClause c end = label <* c <* end
 
 cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
 cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3, jend) -> do
-  -- Make a case statement with the 3 jumps directly after it
+  -- Make a case statement with the 3 jumps directly after it.
+  -- This could produce fewer instructions by going directly to the third clause
+  -- without an intervening jump.
   tell [Case r] >> j1 >> j2 >> j3
   (,,,) <$> mkClause c1 jend <*> mkClause c2 jend <*> mkClause c3 jend <*> label
 
@@ -212,11 +209,12 @@ k2 = const . const
 loop' :: Reg -> OneHash () -> OneHash () -> OneHash ()
 loop' r = loop r `on` k2
 
+-- Loop on a register performing the same action disregarding the character
+-- from the loop control register.
 while :: Reg -> OneHash () -> OneHash ()
 while r m = loop' r m m
 
 -- Functions for register allocation
-
 popReg :: OneHash Reg
 popReg = do
   st <- get
@@ -233,7 +231,7 @@ withScratchRegister :: (Reg -> OneHash ()) -> OneHash ()
 withScratchRegister f = popReg >>= \r -> f r >> pushReg r
 
 class Scratches a where
-  withRegs :: a -> OneHash ()
+  withRegs  :: a -> OneHash ()
   -- Variant which does not ensure that the scratch register is empty
   withRegs' :: a -> OneHash ()
 
@@ -272,13 +270,6 @@ copy s t = withRegs $ copy' s t
 move :: Reg -> Reg -> OneHash ()
 move source target = loop' source (add1 target) (addh target)
 
--- Compute the square of a given register using second register as a scratch
--- pad.
-twoPower :: Reg -> Reg -> OneHash ()
-twoPower work s1 = do
-  loop work (k2 $ add1 s1 >> add1 s1) (\_ br -> br) >> move s1 work
-  move s1 work
-
 -- Fill a counter register with a given number of 1's
 fillCounter :: Reg -> Int -> OneHash ()
 fillCounter r n = void $ replicateM n (add1 r)
@@ -312,6 +303,13 @@ getCharAt source target idx = withRegs $ \b1 b2 -> do
   clear source
   move b1 source
   move b2 idx
+
+-- Compute the square of a given register using second register as a scratch
+-- pad.
+double :: Reg -> Reg -> OneHash ()
+double work s1 = do
+  loop work (k2 $ add1 s1 >> add1 s1) (\_ br -> br) >> move s1 work
+  move s1 work
 
 reverseReg :: Reg -> Reg -> OneHash ()
 reverseReg source target = withRegs $ \idx -> do
