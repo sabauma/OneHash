@@ -335,10 +335,3 @@ reverseReg source target = withRegs $ \idx -> do
   while idx $
     getCharAt source target idx
 
--- Algorithm for computing 2^n
-prob4 :: Int -> OneHash ()
-prob4 n = withRegs' $ \temp -> do
-  fillCounter temp n
-  add1 R1
-  loop' temp (double R1 R2) noop
-
