@@ -133,7 +133,6 @@ data OneHashState = OneHashState
   , temps   :: [Reg]
   } deriving (Show)
 
-
 -- A monad for generating 1# program.
 -- The monadic actions are compiled down to a more reasonable version of 1# with
 -- features like direct jumps and labels, and nestable case statements which
@@ -152,16 +151,20 @@ add1, addh :: Reg -> OneHash ()
 add1 r = tell [Add1 r]
 addh r = tell [AddH r]
 
-mkClause :: OneHash () -> OneHash () -> OneHash (OneHash ())
-mkClause c end = label <* c <* end
+-- cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
+-- cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3, jend) -> do
+--   -- Make a case statement with the 3 jumps directly after it
+--   tell [Case r] >> j1 >> j2 >> j3
+--   (,,,) <$> mkClause c1 jend <*> mkClause c2 jend <*> mkClause c3 jend <*> label
 
 cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
-cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3, jend) -> do
-  -- Make a case statement with the 3 jumps directly after it.
-  -- This could produce fewer instructions by going directly to the third clause
-  -- without an intervening jump.
-  tell [Case r] >> j1 >> j2 >> j3
-  (,,,) <$> mkClause c1 jend <*> mkClause c2 jend <*> mkClause c3 jend <*> label
+cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, jend) -> do
+  -- The first two clauses for a case are jumps to their respective segments
+  -- The final case falls through to c3.
+  -- The c2 clause is the last segment of code for the case statement, so
+  -- its fallthrough behaviour take us out of the case statement
+  tell [Case r] >> j1 >> j2 >> c3 >> jend
+  liftA3 (,,) (label <* c1 <* jend) (label <* c2) label
 
 newLabelName :: String -> OneHash Label
 newLabelName nm = do
@@ -211,6 +214,8 @@ loop' r = loop r `on` k2
 
 -- Loop on a register performing the same action disregarding the character
 -- from the loop control register.
+-- Though this function is convenient, it duplicates the code for `m`, so
+-- consider using `loop'` if you only expect one character type to be in `r`.
 while :: Reg -> OneHash () -> OneHash ()
 while r m = loop' r m m
 
@@ -219,8 +224,8 @@ popReg :: OneHash Reg
 popReg = do
   st <- get
   case temps st of
-       []     -> error "no free temp registers"
-       (x:xs) -> put st { temps = xs } >> return x
+       []   -> error "no free temp registers"
+       x:xs -> put st { temps = xs } >> return x
 
 pushReg :: Reg -> OneHash ()
 pushReg r = modify (\st -> st { temps = r : temps st })
@@ -240,8 +245,8 @@ instance Scratches (OneHash a) where
   withRegs' = void
 
 instance Scratches b => Scratches (Reg -> b) where
-  withRegs  f = withScratchRegister $ \r -> clear r >> withRegs' (f r)
-  withRegs' f = withScratchRegister (withRegs . f)
+  withRegs  f = withScratchRegister $ \r -> clear r >> withRegs (f r)
+  withRegs'   = withScratchRegister . (withRegs' .)
 
 noop :: OneHash ()
 noop = return ()
@@ -280,12 +285,25 @@ add' n m result scratch = copy' n result scratch >> copy' m result scratch
 add :: Reg -> Reg -> Reg -> OneHash ()
 add n m result = withRegs $ add' n m result
 
--- Destructive multiplication
-mult' :: Reg -> Reg -> Reg -> Reg -> OneHash ()
-mult' n m result scratch = loop m (k2 $ copy' n result scratch) (\_ br -> br)
+mult' :: Reg -> Reg -> Reg -> Reg -> Reg -> OneHash ()
+mult' n m result s1 s2 = do
+  copy' m s2 s1
+  loop' s2 (copy' n result s1) noop
 
+-- This function will not work if the result register matches either of the
+-- source registers.
 mult :: Reg -> Reg -> Reg -> OneHash ()
-mult n m result = withRegs $ mult' n m result
+mult n m result = withRegs $ \s ->
+  copy m s >> loop' s (copy n result) noop
+
+multDestructive :: Reg -> Reg -> Reg -> OneHash ()
+multDestructive n m result = loop' m (copy n result) noop
+
+power :: Reg -> Reg -> Reg -> OneHash ()
+power n m result = withRegs $ \s s' -> do
+  copy m s
+  add1 result
+  loop' s (multDestructive n result s' >> move s' result) noop
 
 -- Gets the character in the source register and places it at the target
 -- register
@@ -308,12 +326,19 @@ getCharAt source target idx = withRegs $ \b1 b2 -> do
 -- pad.
 double :: Reg -> Reg -> OneHash ()
 double work s1 = do
-  loop work (k2 $ add1 s1 >> add1 s1) (\_ br -> br) >> move s1 work
+  loop work (k2 $ add1 s1 >> add1 s1) (\_ br -> br)
   move s1 work
 
 reverseReg :: Reg -> Reg -> OneHash ()
 reverseReg source target = withRegs $ \idx -> do
-  withRegs $ copy source idx
+  copy source idx
   while idx $
     getCharAt source target idx
+
+-- Algorithm for computing 2^n
+prob4 :: Int -> OneHash ()
+prob4 n = withRegs' $ \temp -> do
+  fillCounter temp n
+  add1 R1
+  loop' temp (double R1 R2) noop
 
