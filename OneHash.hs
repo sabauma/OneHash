@@ -248,6 +248,11 @@ instance Scratches b => Scratches (Reg -> b) where
   withRegs  f = withScratchRegister $ \r -> clear r >> withRegs (f r)
   withRegs'   = withScratchRegister . (withRegs' .)
 
+-- Emulate the with-labels operation found in William Byrd's solution.
+withLabels :: (OneHash () -> OneHash () -> OneHash ()) -> OneHash ()
+withLabels body = void $ mfix $ \ ~(start, end) ->
+  (,) <$> label <* body start end <*> label
+
 noop :: OneHash ()
 noop = return ()
 
