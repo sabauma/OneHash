@@ -8,8 +8,10 @@ module OneHash
   , OneHash
   , compile
   , add1, addh
+  , comment
   , cases
   , label
+  , namedLabel
   , loop, loop'
   , while
   , eatChar
@@ -19,8 +21,8 @@ module OneHash
   , move
   , noop
   , fillCounter
-  , add, add'
-  , mult, mult'
+  , double
+  , power
   , getCharAt
   , reverseReg
   ) where
@@ -35,6 +37,7 @@ import           Control.Monad.Writer
 import           Data.Function          (on)
 import           Data.List              (unfoldr)
 import           Data.Maybe             (fromJust, mapMaybe)
+import           Text.Printf            (printf)
 
 data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
   deriving (Eq, Enum, Show)
@@ -50,7 +53,8 @@ data Ins
   | AddH Reg
   | Label String
   | Jump String
-  | Case Reg -- Instructions Instructions Instructions
+  | Case Reg
+  | Comment String
   deriving Show
 
 type Instructions = [Ins]
@@ -61,7 +65,12 @@ data Flattened
   | ForwardF Int
   | BackwardF Int
   | CaseF Int
+  | CommentF String
   deriving (Show)
+
+isComment :: Ins -> Bool
+isComment Comment{} = True
+isComment _         = False
 
 computeMapping :: Instructions -> [(String, Int)]
 computeMapping = mapMaybe f . enumInstructions
@@ -72,8 +81,9 @@ computeMapping = mapMaybe f . enumInstructions
 enumInstructions :: Instructions -> [(Int, Ins)]
 enumInstructions ys = unfoldr f (ys, 1)
   where
-    incr Label{} = 0
-    incr _       = 1
+    incr Label{}   = 0
+    incr Comment{} = 0
+    incr _         = 1
 
     f ([],   _) = Nothing
     f (i:is, n) = Just ((n, i), (is, incr i + n))
@@ -92,6 +102,7 @@ computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
     relativizeLabel _ (Case r)       = [CaseF (regIndex r)]
     relativizeLabel _ (Add1 r)       = [Add1F (regIndex r)]
     relativizeLabel _ (AddH r)       = [AddHF (regIndex r)]
+    relativizeLabel _ (Comment s)    = [CommentF s]
     relativizeLabel _ _              = []
 
     -- Maps labels to instruction indices
@@ -109,21 +120,13 @@ encode = unlines . map enc
     enc (ForwardF r)  = unary r ++ "###"
     enc (BackwardF r) = unary r ++ "####"
     enc (CaseF r)     = unary r ++ "#####"
-
--- example2 = [Label "Start", Case R3 [Jump "Done"] [Add1 R1] [Add1 R2], Jump "Start", Label "Done"]
---
--- example =
---   [ Label "Start"
---   , Case R1 [Jump "Done1"] [Add1 R3, Jump "Start"] [Jump "Exit"]
---   , Label "Done1"
---   , Label "Start2"
---   , Case R2 [Jump "Done2"] [Add1 R3, Jump "Start"] [Jump "Exit"]
---   , Label "Done2"
---   , Label "Exit"
---   ]
+    enc (CommentF s)  = ";; " ++ s
 
 compile :: OneHash a -> String
 compile = encode . computeAddrs . runASM
+
+compile' :: OneHash a -> String
+compile' = encode . computeAddrs . filter (not . isComment) . runASM
 
 newtype Label = MkL { name :: String }
   deriving (Show)
@@ -151,6 +154,11 @@ add1, addh :: Reg -> OneHash ()
 add1 r = tell [Add1 r]
 addh r = tell [AddH r]
 
+comment :: String -> OneHash ()
+comment s = tell [Comment s]
+
+-- This is a slightly less compact encoding of case statements, though it
+-- is slightly more simple.
 -- cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
 -- cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3, jend) -> do
 --   -- Make a case statement with the 3 jumps directly after it
@@ -245,8 +253,8 @@ instance Scratches (OneHash a) where
   withRegs' = void
 
 instance Scratches b => Scratches (Reg -> b) where
-  withRegs  f = withScratchRegister $ \r -> clear r >> withRegs (f r)
-  withRegs'   = withScratchRegister . (withRegs' .)
+  withRegs f = withScratchRegister $ \r -> clear r >> withRegs (f r)
+  withRegs'  = withScratchRegister . (withRegs' .)
 
 -- Emulate the with-labels operation found in William Byrd's solution.
 withLabels :: (OneHash () -> OneHash () -> OneHash ()) -> OneHash ()
@@ -306,6 +314,7 @@ multDestructive n m result = loop' m (copy n result) noop
 
 power :: Reg -> Reg -> Reg -> OneHash ()
 power n m result = withRegs $ \s s' -> do
+  comment $ printf "%s = %s ^ %s" (show result) (show n) (show m)
   copy m s
   add1 result
   loop' s (multDestructive n result s' >> move s' result) noop
@@ -336,7 +345,16 @@ double work s1 = do
 
 reverseReg :: Reg -> Reg -> OneHash ()
 reverseReg source target = withRegs $ \idx -> do
+  comment $ "reversing register " ++ show source ++ " into " ++ show target
   copy source idx
   while idx $
     getCharAt source target idx
+  comment "done reversing"
+
+-- Algorithm for computing 2^n
+prob4 :: Int -> OneHash ()
+prob4 n = withRegs' $ \temp -> do
+  fillCounter temp n
+  add1 R1
+  loop' temp (double R1 R2) noop
 
