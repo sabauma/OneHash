@@ -1,4 +1,4 @@
-module HW2 where
+module BackwardsBinary where
 
 import           Control.Monad
 import           Control.Monad.Fix
