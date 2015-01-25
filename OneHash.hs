@@ -42,8 +42,10 @@ import           Text.Printf            (printf)
 data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
   deriving (Eq, Enum, Show)
 
+-- | We treat the first 5 registers as general user registers and the rest are
+-- used for scratch space by the register allocator functions below.
 scratchRegisters :: [Reg]
-scratchRegisters = [R10 .. R15]
+scratchRegisters = [R6 .. R15]
 
 regIndex :: Reg -> Int
 regIndex = (+1) . fromEnum
@@ -66,7 +68,7 @@ data Flattened
   | BackwardF Int
   | CaseF Int
   | CommentF String
-  deriving (Show)
+  deriving Show
 
 isComment :: Ins -> Bool
 isComment Comment{} = True
@@ -245,7 +247,7 @@ withScratchRegister f = popReg >>= \r -> f r >> pushReg r
 
 class Scratches a where
   withRegs  :: a -> OneHash ()
-  -- Variant which does not ensure that the scratch register is empty
+  -- Variant which does not ensure that the scratch register is empty.
   withRegs' :: a -> OneHash ()
 
 instance Scratches (OneHash a) where
