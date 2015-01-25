@@ -35,8 +35,9 @@ toUnary r result = withRegs $ \s -> do
   reverseReg r s
   loop' s (withRegs (double result) >> add1 result) (withRegs $ double result)
 
-addBB :: Reg -> Reg -> Reg -> OneHash ()
-addBB r1 r2 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
+-- | Add two backwards binary numbers destructively
+addBB' :: Reg -> Reg -> Reg -> OneHash ()
+addBB' r1 r2 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
   nocarry' <- label
   cases r1
     (cases r2
@@ -68,12 +69,34 @@ addBB r1 r2 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
   done' <- label
   return (nocarry', carry', done')
 
-multBB :: Reg -> Reg -> Reg -> OneHash ()
-multBB r1 r2 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
-  nocarry' <- label
-  cases r1 done done done
-  carry'   <- label
-  cases r1 done done done
-  done'    <- label
-  return (nocarry', carry', done')
+-- | Non-destructive version BB addition.
+addBB :: Reg -> Reg -> Reg -> OneHash ()
+addBB r1 r2 result = withRegs $ \t1 t2 -> do
+  copy r1 t1
+  copy r2 t2
+  addBB' t1 t2 result
+
+-- Save a register into the target register using a special encoding.
+-- # -> ##
+-- 1 -> #1
+-- Stop -> 1
+save :: Reg -> Reg -> OneHash ()
+save source target = do
+  loop' source (addh target >> add1 target) (addh target >> addh target)
+  add1 target
+
+-- Restore a register's contents which were saved using the @save@ function.
+restore :: Reg -> Reg -> OneHash ()
+restore source target = do
+  start <- label
+  cases source noop noop
+    (cases source noop (add1 target >> start) (addh target >> start))
+
+-- Save all other registers to R15
+saveAll :: OneHash ()
+saveAll = mapM_ (`save` R15) [R1 .. R14]
+
+-- Restore all registers from R15
+restoreAll :: OneHash ()
+restoreAll = mapM_ (restore R15) [R1 .. R14]
 
