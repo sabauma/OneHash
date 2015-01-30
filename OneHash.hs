@@ -3,10 +3,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 module OneHash
-  ( Reg (..)
+  ( Reg
   , Scratches (..)
   , OneHash
-  , compile
+  , compile, compile'
   , add1, addh
   , comment
   , cases
@@ -25,6 +25,9 @@ module OneHash
   , power
   , getCharAt
   , reverseReg
+
+  , r1, r2, r3, r4, r5, r6, r7, r8, r9
+  , r
   ) where
 
 import           Prelude                hiding (break)
@@ -39,13 +42,28 @@ import           Data.List              (unfoldr)
 import           Data.Maybe             (fromJust, mapMaybe)
 import           Text.Printf            (printf)
 
-data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
+--data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
+newtype Reg = Reg Int
   deriving (Eq, Enum, Show)
+
+r1, r2, r3, r4, r5, r6, r7, r8, r9 :: Reg
+r1 = Reg 1
+r2 = Reg 2
+r3 = Reg 3
+r4 = Reg 4
+r5 = Reg 5
+r6 = Reg 6
+r7 = Reg 7
+r8 = Reg 8
+r9 = Reg 9
+
+r :: Int -> Reg
+r = Reg
 
 -- | We treat the first 5 registers as general user registers and the rest are
 -- used for scratch space by the register allocator functions below.
 scratchRegisters :: [Reg]
-scratchRegisters = [R6 .. R15]
+scratchRegisters = [Reg 10 .. ]
 
 regIndex :: Reg -> Int
 regIndex = (+1) . fromEnum
@@ -320,6 +338,7 @@ power n m result = withRegs $ \s s' -> do
   copy m s
   add1 result
   loop' s (multDestructive n result s' >> move s' result) noop
+  comment $ printf "done computing power"
 
 -- Gets the character in the source register and places it at the target
 -- register
@@ -357,6 +376,6 @@ reverseReg source target = withRegs $ \idx -> do
 prob4 :: Int -> OneHash ()
 prob4 n = withRegs' $ \temp -> do
   fillCounter temp n
-  add1 R1
-  loop' temp (double R1 R2) noop
+  add1 r1
+  loop' temp (double r1 r2) noop
 
