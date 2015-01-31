@@ -45,13 +45,13 @@ addBB' r1 r2 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
        (add1 result >> nocarry)   -- 0 ε 1
        (addh result >> nocarry))  -- 0 ε #
     (cases r2
-        (add1 result >> nocarry)  -- 0 1 ε
-        (addh result >> carry)    -- 0 1 1
-        (add1 result >> nocarry)) -- 0 1 #
+       (add1 result >> nocarry)  -- 0 1 ε
+       (addh result >> carry)    -- 0 1 1
+       (add1 result >> nocarry)) -- 0 1 #
     (cases r2
-        (addh result >> nocarry)  -- 0 # ε
-        (add1 result >> nocarry)  -- 0 # 1
-        (addh result >> nocarry)) -- 0 # #
+       (addh result >> nocarry)  -- 0 # ε
+       (add1 result >> nocarry)  -- 0 # 1
+       (addh result >> nocarry)) -- 0 # #
   carry' <- label
   cases r1
     (cases r2

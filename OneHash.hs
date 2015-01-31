@@ -27,7 +27,6 @@ module OneHash
   , reverseReg
   ) where
 
-import           Prelude                hiding (break)
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Fix      (mfix)
@@ -37,6 +36,7 @@ import           Control.Monad.Writer
 import           Data.Function          (on)
 import           Data.List              (unfoldr)
 import           Data.Maybe             (fromJust, mapMaybe)
+import           Prelude                hiding (break)
 import           Text.Printf            (printf)
 
 data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
@@ -131,7 +131,7 @@ compile' :: OneHash a -> String
 compile' = encode . computeAddrs . filter (not . isComment) . runASM
 
 newtype Label = MkL { name :: String }
-  deriving (Show)
+  deriving Show
 
 data OneHashState = OneHashState
   { counter :: !Int
@@ -238,7 +238,7 @@ popReg = do
        x:xs -> put st { temps = xs } >> return x
 
 pushReg :: Reg -> OneHash ()
-pushReg r = modify (\st -> st { temps = r : temps st })
+pushReg r = modify $ \st -> st { temps = r : temps st }
 
 -- Allocate a single register from the scratch pool and supply it to the
 -- given function.
