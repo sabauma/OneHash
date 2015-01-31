@@ -3,10 +3,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 module OneHash
-  ( Reg (..)
+  ( Reg
   , Scratches (..)
   , OneHash
-  , compile
+  , Value (..)
+  , compile, compile', compileValue
   , add1, addh
   , comment
   , cases
@@ -25,6 +26,9 @@ module OneHash
   , power
   , getCharAt
   , reverseReg
+
+  , r1, r2, r3, r4, r5, r6, r7, r8, r9
+  , r
   ) where
 
 import           Control.Applicative
@@ -39,16 +43,39 @@ import           Data.Maybe             (fromJust, mapMaybe)
 import           Prelude                hiding (break)
 import           Text.Printf            (printf)
 
-data Reg = R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 | R11 | R12 | R13 | R14 | R15
+newtype Reg = Reg Int
   deriving (Eq, Enum, Show)
+
+data Value = One | Hash
+  deriving Eq
+
+instance Show Value where
+  show One  = "1"
+  show Hash = "#"
+
+  showList  = foldr ((.) . shows) id
+
+r1, r2, r3, r4, r5, r6, r7, r8, r9 :: Reg
+r1 = Reg 1
+r2 = Reg 2
+r3 = Reg 3
+r4 = Reg 4
+r5 = Reg 5
+r6 = Reg 6
+r7 = Reg 7
+r8 = Reg 8
+r9 = Reg 9
+
+r :: Int -> Reg
+r = Reg
 
 -- | We treat the first 5 registers as general user registers and the rest are
 -- used for scratch space by the register allocator functions below.
 scratchRegisters :: [Reg]
-scratchRegisters = [R6 .. R15]
+scratchRegisters = [Reg 10 .. ]
 
 regIndex :: Reg -> Int
-regIndex = (+1) . fromEnum
+regIndex (Reg i) = i
 
 data Ins
   = Add1 Reg
@@ -70,9 +97,9 @@ data Flattened
   | CommentF String
   deriving Show
 
-isComment :: Ins -> Bool
-isComment Comment{} = True
-isComment _         = False
+isComment :: Flattened -> Bool
+isComment CommentF{} = True
+isComment _          = False
 
 computeMapping :: Instructions -> [(String, Int)]
 computeMapping = mapMaybe f . enumInstructions
@@ -110,12 +137,12 @@ computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
     -- Maps labels to instruction indices
     mapping = computeMapping xs
 
-unary :: Int -> String
-unary n = replicate n '1'
-
 encode :: [Flattened] -> String
 encode = unlines . map enc
   where
+    unary :: Int -> String
+    unary n = replicate n '1'
+
     enc :: Flattened -> String
     enc (Add1F r)     = unary r ++ "#"
     enc (AddHF r)     = unary r ++ "##"
@@ -124,11 +151,31 @@ encode = unlines . map enc
     enc (CaseF r)     = unary r ++ "#####"
     enc (CommentF s)  = ";; " ++ s
 
+encodeValue :: [Flattened] -> [Value]
+encodeValue = concatMap enc
+  where
+    unary :: Int -> [Value]
+    unary n = replicate n One
+
+    enc :: Flattened -> [Value]
+    enc (Add1F r)     = unary r ++ [Hash]
+    enc (AddHF r)     = unary r ++ [Hash, Hash]
+    enc (ForwardF r)  = unary r ++ [Hash, Hash, Hash]
+    enc (BackwardF r) = unary r ++ [Hash, Hash, Hash, Hash]
+    enc (CaseF r)     = unary r ++ [Hash, Hash, Hash, Hash, Hash]
+    enc (CommentF s)  = []
+
+execOneHash :: OneHash a -> [Flattened]
+execOneHash = computeAddrs . runASM
+
+compileValue :: OneHash a -> [Value]
+compileValue = encodeValue . execOneHash
+
 compile :: OneHash a -> String
-compile = encode . computeAddrs . runASM
+compile = encode . execOneHash
 
 compile' :: OneHash a -> String
-compile' = encode . computeAddrs . filter (not . isComment) . runASM
+compile' = encode . filter (not . isComment) . execOneHash
 
 newtype Label = MkL { name :: String }
   deriving Show
@@ -320,6 +367,7 @@ power n m result = withRegs $ \s s' -> do
   copy m s
   add1 result
   loop' s (multDestructive n result s' >> move s' result) noop
+  comment $ printf "done computing power"
 
 -- Gets the character in the source register and places it at the target
 -- register
@@ -357,6 +405,6 @@ reverseReg source target = withRegs $ \idx -> do
 prob4 :: Int -> OneHash ()
 prob4 n = withRegs' $ \temp -> do
   fillCounter temp n
-  add1 R1
-  loop' temp (double R1 R2) noop
+  add1 r1
+  loop' temp (double r1 r2) noop
 

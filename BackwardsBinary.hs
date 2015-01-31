@@ -7,28 +7,32 @@ import           Text.Printf
 
 add1bb :: Reg -> Reg -> OneHash ()
 add1bb r1 result = void $ mfix $ \ ~(nocarry, carry, done) -> do
+  comment "begin add1"
+  comment "carries"
   carry'   <- label
   cases r1
     (add1 result >> done)
     (addh result >> carry)
     (add1 result >> nocarry)
+  comment "no carries"
   nocarry' <- label
   cases r1
     done
     (add1 result >> nocarry)
     (addh result >> nocarry)
   done'    <- label
+  comment "end add1"
   return (nocarry', carry', done')
 
 -- | In place variant of add1
 add1bb' :: Reg -> OneHash ()
-add1bb' r1 = withRegs $ \s -> move r1 s >> add1bb s r1
+add1bb' rin = withRegs $ \s -> move rin s >> add1bb s rin
 
 -- This function has the additional restriction that all BB numbers have a 1
 -- as their most significant digit.
 -- This makes things easier and is a generally sensible thing to do
 toBB :: Reg -> Reg -> OneHash ()
-toBB r result = loop' r (add1bb' result) noop
+toBB r result = addh result >> loop' r (add1bb' result) noop
 
 toUnary :: Reg -> Reg -> OneHash ()
 toUnary r result = withRegs $ \s -> do
@@ -93,10 +97,23 @@ restore source target = do
     (cases source noop (add1 target >> start) (addh target >> start))
 
 -- Save all other registers to R15
-saveAll :: OneHash ()
-saveAll = mapM_ (`save` R15) [R1 .. R14]
+-- saveAll :: OneHash ()
+-- saveAll = mapM_ (`save` R15) [R1 .. R14]
 
 -- Restore all registers from R15
-restoreAll :: OneHash ()
-restoreAll = mapM_ (restore R15) [R1 .. R14]
+-- restoreAll :: OneHash ()
+-- restoreAll = mapM_ (restore R15) [R1 .. R14]
+
+clear12 :: OneHash ()
+clear12 = void $ mfix $ \ ~(clear1, clear2) -> do
+  comment "dispatch table"
+  dispatch <- label
+  cases r3 noop (cases r3 clear1 clear2 noop) noop
+  comment "clear register 1"
+  clear1' <- label
+  cases r1 (add1 r3 >> add1 r3 >> dispatch) (add1 r3 >> dispatch) (add1 r3 >> dispatch)
+  clear2' <- label
+  comment "clear register 2"
+  cases r2 noop (add1 r3 >> add1 r3 >> dispatch) (add1 r3 >> add1 r3 >> dispatch)
+  return (clear1', clear2')
 
