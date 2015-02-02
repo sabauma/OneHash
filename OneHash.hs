@@ -281,7 +281,7 @@ popReg :: OneHash Reg
 popReg = do
   st <- get
   case temps st of
-       []   -> error "no free temp registers"
+       {-[]   -> error "no free temp registers"-}
        x:xs -> put st { temps = xs } >> return x
 
 pushReg :: Reg -> OneHash ()
@@ -289,7 +289,7 @@ pushReg r = modify $ \st -> st { temps = r : temps st }
 
 -- Allocate a single register from the scratch pool and supply it to the
 -- given function.
-withScratchRegister :: (Reg -> OneHash ()) -> OneHash ()
+withScratchRegister :: (Reg -> OneHash a) -> OneHash ()
 withScratchRegister f = popReg >>= \r -> f r >> pushReg r
 
 class Scratches a where
