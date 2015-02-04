@@ -1,3 +1,4 @@
+{-# LANGUAGE RecursiveDo #-}
 module BackwardsBinary where
 
 import           Control.Monad

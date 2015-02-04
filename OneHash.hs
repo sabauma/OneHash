@@ -281,7 +281,6 @@ popReg :: OneHash Reg
 popReg = do
   st <- get
   case temps st of
-       {-[]   -> error "no free temp registers"-}
        x:xs -> put st { temps = xs } >> return x
 
 pushReg :: Reg -> OneHash ()
@@ -407,4 +406,7 @@ prob4 n = withRegs' $ \temp -> do
   fillCounter temp n
   add1 r1
   loop' temp (double r1 r2) noop
+
+subDestructive :: Reg -> Reg -> OneHash ()
+subDestructive n m = while m (eatChar n) (eatChar n)
 
