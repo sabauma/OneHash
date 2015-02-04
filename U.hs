@@ -39,6 +39,9 @@ doCases r1 = mdo
   addOne   <- label
   add1 r2
 
+-- TODO: We can avoid using all these labels by simply using a cases operation
+-- and a noop, since we are always jumping to the instruction right after the
+-- cases.
 green :: OneHash ()
 green = withLabels $ \ start end -> mdo
   jumpCases r3 end opcode1 jumps
@@ -47,7 +50,7 @@ green = withLabels $ \ start end -> mdo
   opcode2 <- label
   jumpCases r3 write1h opcode3 end
   opcode3 <- label
-  jumpCases r3 case1 opcode4 end
+  jumpCases r3 case1   opcode4 end
   opcode4 <- label
   jumpCases r3 write21 opcode5 end
   opcode5 <- label

@@ -11,6 +11,7 @@ module OneHash
   , add1, addh
   , comment
   , cases
+  , dispatch
   , label
   , namedLabel
   , loop, loop'
@@ -224,6 +225,12 @@ cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, jend) -> do
   -- its fallthrough behaviour take us out of the case statement
   tell [Case r] >> j1 >> j2 >> c3 >> jend
   liftA3 (,,) (label <* c1 <* jend) (label <* c2) label
+
+-- A variant of cases with fallthrough semantics.
+dispatch :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
+dispatch r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3) -> do
+  tell [Case r] >> j1 >> j2 >> j3
+  liftA3 (,,) (label <* c1) (label <* c2) (label <* c3)
 
 newLabelName :: String -> OneHash Label
 newLabelName nm = do
