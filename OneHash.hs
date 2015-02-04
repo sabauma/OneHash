@@ -28,7 +28,8 @@ module OneHash
   , reverseReg
 
   , r1, r2, r3, r4, r5, r6, r7, r8, r9
-  , r
+  , reg
+  , subDestructive
   ) where
 
 import           Control.Applicative
@@ -66,8 +67,8 @@ r7 = Reg 7
 r8 = Reg 8
 r9 = Reg 9
 
-r :: Int -> Reg
-r = Reg
+reg :: Int -> Reg
+reg = Reg
 
 -- | We treat the first 5 registers as general user registers and the rest are
 -- used for scratch space by the register allocator functions below.
@@ -408,5 +409,5 @@ prob4 n = withRegs' $ \temp -> do
   loop' temp (double r1 r2) noop
 
 subDestructive :: Reg -> Reg -> OneHash ()
-subDestructive n m = while m (eatChar n) (eatChar n)
+subDestructive n m = while m (eatChar n)
 
