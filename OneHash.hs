@@ -16,7 +16,7 @@ module OneHash
   , namedLabel
   , loop, loop'
   , while
-  , eatChar
+  , chomp
   , moveChar
   , clear
   , copy, copy'
@@ -321,8 +321,8 @@ withLabels body = void $ mfix $ \ ~(start, end) ->
 noop :: OneHash ()
 noop = return ()
 
-eatChar :: Reg -> OneHash ()
-eatChar reg = cases reg noop noop noop
+chomp :: Reg -> OneHash ()
+chomp reg = cases reg noop noop noop
 
 moveChar :: Reg -> Reg -> OneHash ()
 moveChar r1 r2 = cases r1 noop (add1 r2) (addh r2)
@@ -385,7 +385,7 @@ getCharAt source target idx = withRegs $ \b1 b2 -> do
   copy source b1
   copy idx    b2
   -- Discard idx # of characters from source
-  while idx $ eatChar source
+  while idx $ chomp source
   -- Move the character from source to the target
   moveChar source target
   -- Restore the saved source and index register from the backup copies
@@ -417,5 +417,5 @@ prob4 n = withRegs' $ \temp -> do
   loop' temp (double r1 r2) noop
 
 subDestructive :: Reg -> Reg -> OneHash ()
-subDestructive n m = while m (eatChar n)
+subDestructive n m = while m (chomp n)
 

@@ -87,13 +87,29 @@ decode rin rout = do
     (cases rin noop (add1 rout >> start) (addh rout >> start))
     (cases rin noop noop noop)
 
+decode' :: Reg -> Reg -> Reg -> OneHash ()
+decode' rin ones hashes = do
+  start <- label
+  cases rin noop
+    (cases rin noop (add1 ones >> start) (addh hashes >> start))
+    (cases rin noop noop noop)
+
 ----------------------------------------------------------------------------
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
 lookupReg :: Reg -> Reg -> OneHash ()
-lookupReg rin n = undefined
-
+lookupReg rin n rout = withRegs $ \s1 s2 -> do
+  -- Copy registers to preserve their contents
+  copy rin  rin'
+  copy n    n'
+  -- Convert to 0-indexing
+  chomp n'
+  -- Consume the first n things
+  loop' n' (decode rin' rout) noop
+  clear rout
+  -- Decode the current value into rout
+  decode rin' rout
 
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
