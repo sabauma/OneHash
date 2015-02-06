@@ -1,4 +1,3 @@
-
 module Phi
   ( Value (..)
   , phi
