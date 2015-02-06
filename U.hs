@@ -64,6 +64,7 @@ green = withLabels $ \ start end -> mdo
 -- empty => ##
 -- This program will also separate strings of 1^n#^m via ##, such as
 -- 1#1# => 111# ## 111#
+toEncoding :: OneHash ()
 toEncoding r = withLabels $
               \ start end -> mdo
                   cases r (addh r7 >> addh r7 >> move r7 r >> end)
@@ -82,7 +83,8 @@ toEncoding r = withLabels $
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
-lookupReg = undefined
+lookupReg :: Reg -> Reg -> OneHash ()
+lookupReg rin n = undefined
 
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
