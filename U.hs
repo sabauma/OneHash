@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecursiveDo                #-}
 
@@ -53,9 +52,9 @@ step = withLabels $ \ start end -> mdo
       writeh  end = lookupReg >> addh r6 >> updateReg >> end
       jumpadd end = move r5 r2 >> end
       jumpsub end = subDestructive r2 r5 >> end
-      caseh   end = lookupReg >> (cases r6 (add1 r2)
-                                       (add1 r2 >> add1 r2)
-                                       (add1 r2 >> add1 r2 >> add1 r2))
+      caseh   end = lookupReg >> cases r6 (add1 r2)
+                                   (add1 r2 >> add1 r2)
+                                   (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
 
 ----------------------------------------------------------------------------
@@ -149,7 +148,7 @@ testLookup :: OneHash ()
 testLookup = do
   forM_ [1 .. 10] (\i -> replicateM_ i (add1 r1) >> addh r1)
   toEncoding r1 r2
-  replicateM 4 (add1 r3)
+  replicateM_ 4 (add1 r3)
   lookupReg' r2 r3 r4
 
 testUpdate :: OneHash ()
