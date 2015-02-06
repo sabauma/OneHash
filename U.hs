@@ -10,21 +10,21 @@ import OneHash
 import Phi
 
 
--- It's worth noting that if we "encode" the program via the operation 
+-- It's worth noting that if we "encode" the program via the operation
 -- called toEncoding below, we can totally get away with using lookup
 -- for both R4 and the program instructions in R1 by abstracting it a
 -- bit more.
 ----------------------------------------------------------------------------
--- The "step" step. 
+-- The "step" step.
 --
 -- Assumptions:
 --
--- 0) The registers are as follows: 
+-- 0) The registers are as follows:
 --      R1: the input program p
 --      R2: an instruction number 1n
 --      R3: the nth instruction of p
 --      R4: the contents of all regsiters, encoded as above
--- 
+--
 -- 1) It uses R5 as the register being manipulated (denoted as n below)
 --
 -- 2) lookupReg will look up the nth register and place it in R6, preserving
@@ -52,8 +52,8 @@ step = withLabels $ \ start end -> mdo
       writeh  end = lookupReg >> addh r6 >> updateReg >> end
       jumpadd end = move r5 r2 >> end
       jumpsub end = subDestructive r2 r5 >> end
-      caseh   end = lookupReg >> (cases r6 (add1 r2) 
-                                       (add1 r2 >> add1 r2) 
+      caseh   end = lookupReg >> (cases r6 (add1 r2)
+                                       (add1 r2 >> add1 r2)
                                        (add1 r2 >> add1 r2 >> add1 r2))
                           >> updateReg >> end
 
@@ -64,13 +64,13 @@ step = withLabels $ \ start end -> mdo
 -- empty => ##
 -- This program will also separate strings of 1^n#^m via ##, such as
 -- 1#1# => 111# ## 111#
-toEncoding r = withLabels $ 
+toEncoding r = withLabels $
               \ start end -> mdo
-                  cases r (addh r7 >> addh r7 >> move r7 r >> end) 
-                          (add1 r7 >> add1 r7 >> oneloop) 
+                  cases r (addh r7 >> addh r7 >> move r7 r >> end)
+                          (add1 r7 >> add1 r7 >> oneloop)
                           (add1 r7 >> addh r7 >> hashloop)
                   oneloop <- label
-                  cases r (addh r7 >> addh r7 >> move r7 r >> end) 
+                  cases r (addh r7 >> addh r7 >> move r7 r >> end)
                           (add1 r7 >> add1 r7 >> oneloop)
                           (add1 r7 >> addh r7 >> hashloop)
                   hashloop <- label
