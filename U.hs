@@ -87,6 +87,15 @@ decode rin rout = do
     (cases rin noop (add1 rout >> start) (addh rout >> start))
     (cases rin noop noop noop)
 
+-- Eats a cell in the encoding, but does not decode it.
+-- This will not save the trailing termination character.
+eatCell :: Reg -> Reg -> OneHash ()
+eatCell rin rout = do
+  start <- label
+  cases rin noop
+    (add1 rout >> cases rin noop (add1 rout >> start) (addh rout >> start))
+    (cases rin noop noop noop)
+
 ----------------------------------------------------------------------------
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
