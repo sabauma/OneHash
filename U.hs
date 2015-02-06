@@ -55,7 +55,7 @@ step = withLabels $ \ start end -> mdo
       caseh   end = lookupReg >> (cases r6 (add1 r2)
                                        (add1 r2 >> add1 r2)
                                        (add1 r2 >> add1 r2 >> add1 r2))
-                          >> updateReg >> end
+                              >> updateReg >> end
 
 ----------------------------------------------------------------------------
 -- Turns a register r into the encoded version via r7 as:
@@ -64,20 +64,29 @@ step = withLabels $ \ start end -> mdo
 -- empty => ##
 -- This program will also separate strings of 1^n#^m via ##, such as
 -- 1#1# => 111# ## 111#
-toEncoding :: Reg -> OneHash ()
-toEncoding r = withLabels $
-              \ start end -> mdo
-                  cases r (addh r7 >> addh r7 >> move r7 r >> end)
-                          (add1 r7 >> add1 r7 >> oneloop)
-                          (add1 r7 >> addh r7 >> hashloop)
-                  oneloop <- label
-                  cases r (addh r7 >> addh r7 >> move r7 r >> end)
-                          (add1 r7 >> add1 r7 >> oneloop)
-                          (add1 r7 >> addh r7 >> hashloop)
-                  hashloop <- label
-                  cases r (addh r7 >> addh r7 >> move r7 r >> end)
-                          (addh r7 >> addh r7 >> add1 r7 >> add1 r7 >> oneloop)
-                          (add1 r7 >> addh r7 >> hashloop)
+toEncoding :: Reg -> Reg -> OneHash ()
+toEncoding r r' = withLabels $ \ start end -> mdo
+  cases r (addh r' >> addh r' >> move r' r >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  oneloop <- label
+  cases r (addh r' >> addh r' >> move r' r >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  hashloop <- label
+  cases r (addh r' >> addh r' >> move r' r >> end)
+          (addh r' >> addh r' >> add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+
+-- Generate the desired encoding of data, which is slightly different than for
+-- code, which will separate instructions by ##.
+-- This converts the entire contents of rin to the encoding and places
+-- a terminatior at the end.
+toDataEncoding :: Reg -> Reg -> OneHash()
+toDataEncoding rin rout = do
+  loop' rin (add1 rout >> add1 rout) (add1 rout >> addh rout)
+  addh rout
+  addh rout
 
 -- Decode one cell on an encoded tape
 decode :: Reg -> Reg -> OneHash ()
@@ -116,9 +125,21 @@ lookupReg' rin n rout = withRegs $ \rin' n' -> do
   -- Decode the current value into rout
   decode rin' rout
 
+updateReg' :: Reg -> Reg -> Reg -> OneHash ()
+updateReg' regSet n val = withRegs $ \n' tmp -> do
+  copy n n'
+  chomp n'
+  -- Seek to the desired register
+  loop' n' (eatCell regSet tmp >> addh tmp >> addh tmp) noop
+  -- Consume the current register and throw it away
+  withRegs $ eatCell regSet
+  toDataEncoding val tmp
+  -- Move everything back
+  move regSet tmp
+  move tmp regSet
+
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
 -- r5 = 1^n
 updateReg = undefined
-
 
