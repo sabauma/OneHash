@@ -2,12 +2,13 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE RecursiveDo      #-}
+{-# LANGUAGE RecursiveDo                #-}
 
 module U where
 
-import OneHash
-import Phi hiding (decode)
+import           Control.Monad
+import           OneHash
+import           Phi           hiding (decode)
 
 
 -- It's worth noting that if we "encode" the program via the operation
@@ -66,15 +67,15 @@ step = withLabels $ \ start end -> mdo
 -- 1#1# => 111# ## 111#
 toEncoding :: Reg -> Reg -> OneHash ()
 toEncoding r r' = withLabels $ \ start end -> mdo
-  cases r (addh r' >> addh r' >> move r' r >> end)
+  cases r (addh r' >> addh r' >> end)
           (add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
   oneloop <- label
-  cases r (addh r' >> addh r' >> move r' r >> end)
+  cases r (addh r' >> addh r' >> end)
           (add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
   hashloop <- label
-  cases r (addh r' >> addh r' >> move r' r >> end)
+  cases r (addh r' >> addh r' >> end)
           (addh r' >> addh r' >> add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
 
@@ -143,4 +144,20 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
 -- r5 = 1^n
 updateReg :: OneHash ()
 updateReg = updateReg' r4 r5 r6
+
+testLookup :: OneHash ()
+testLookup = do
+  forM_ [1 .. 10] (\i -> replicateM_ i (add1 r1) >> addh r1)
+  toEncoding r1 r2
+  replicateM 4 (add1 r3)
+  lookupReg' r2 r3 r4
+
+testUpdate :: OneHash ()
+testUpdate = do
+  forM_ [1 .. 10] $ \i -> replicateM_ i (add1 r1) >> addh r1
+  toEncoding r1 r2
+  replicateM_ 10 $ add1 r3 >> updateReg' r2 r3 r4
+
+test1 = phi (compileValue testLookup) []
+test2 = phi (compileValue testUpdate) []
 
