@@ -15,7 +15,7 @@ import Phi
 -- for both R4 and the program instructions in R1 by abstracting it a
 -- bit more.
 ----------------------------------------------------------------------------
--- The "green" step. 
+-- The "step" step. 
 --
 -- Assumptions:
 --
@@ -39,8 +39,8 @@ import Phi
 --      1^n####  => ####1^n
 --      1^n##### => #####1^n
 --
-green :: OneHash ()
-green = withLabels $ \ start end -> mdo
+step :: OneHash ()
+step = withLabels $ \ start end -> mdo
   cases r3 end end  noop
   cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop
