@@ -87,13 +87,6 @@ decode rin rout = do
     (cases rin noop (add1 rout >> start) (addh rout >> start))
     (cases rin noop noop noop)
 
-decode' :: Reg -> Reg -> Reg -> OneHash ()
-decode' rin ones hashes = do
-  start <- label
-  cases rin noop
-    (cases rin noop (add1 ones >> start) (addh hashes >> start))
-    (cases rin noop noop noop)
-
 ----------------------------------------------------------------------------
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
