@@ -79,12 +79,21 @@ toEncoding r = withLabels $
                           (addh r7 >> addh r7 >> add1 r7 >> add1 r7 >> oneloop)
                           (add1 r7 >> addh r7 >> hashloop)
 
+-- Decode one cell on an encoded tape
+decode :: Reg -> Reg -> OneHash ()
+decode rin rout = do
+  start <- label
+  cases rin noop
+    (cases rin noop (add1 rout >> start) (addh rout >> start))
+    (cases rin noop noop noop)
+
 ----------------------------------------------------------------------------
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
 lookupReg :: Reg -> Reg -> OneHash ()
 lookupReg rin n = undefined
+
 
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
