@@ -7,7 +7,7 @@
 module U where
 
 import OneHash
-import Phi
+import Phi hiding (decode)
 
 
 -- It's worth noting that if we "encode" the program via the operation
@@ -64,7 +64,7 @@ step = withLabels $ \ start end -> mdo
 -- empty => ##
 -- This program will also separate strings of 1^n#^m via ##, such as
 -- 1#1# => 111# ## 111#
-toEncoding :: OneHash ()
+toEncoding :: Reg -> OneHash ()
 toEncoding r = withLabels $
               \ start end -> mdo
                   cases r (addh r7 >> addh r7 >> move r7 r >> end)
@@ -91,8 +91,11 @@ decode rin rout = do
 -- Should look at r4 and find the nth register where r5 = 1^n
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
-lookupReg :: Reg -> Reg -> OneHash ()
-lookupReg rin n rout = withRegs $ \s1 s2 -> do
+lookupReg :: OneHash ()
+lookupReg = lookupReg' r4 r5 r6
+
+lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
+lookupReg' rin n rout = withRegs $ \rin' n' -> do
   -- Copy registers to preserve their contents
   copy rin  rin'
   copy n    n'
