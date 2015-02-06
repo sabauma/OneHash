@@ -141,5 +141,6 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
 -- r5 = 1^n
-updateReg = undefined
+updateReg :: OneHash ()
+updateReg = updateReg' r4 r5 r6
 
