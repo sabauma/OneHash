@@ -9,14 +9,11 @@ import           Control.Monad
 import           OneHash
 import           Phi           hiding (decode)
 
-
 -- It's worth noting that if we "encode" the program via the operation
 -- called toEncoding below, we can totally get away with using lookup
 -- for both R4 and the program instructions in R1 by abstracting it a
 -- bit more.
 ----------------------------------------------------------------------------
--- The "step" step.
---
 -- Assumptions:
 --
 -- 0) The registers are as follows:
@@ -48,14 +45,16 @@ step = withLabels $ \ start end -> mdo
   cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop
     where
-      write1  end = lookupReg >> add1 r6 >> updateReg >> end
-      writeh  end = lookupReg >> addh r6 >> updateReg >> end
+      write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end
+      writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end
       jumpadd end = move r5 r2 >> end
       jumpsub end = subDestructive r2 r5 >> end
       caseh   end = lookupReg >> cases r6 (add1 r2)
                                    (add1 r2 >> add1 r2)
                                    (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
+
+
 
 ----------------------------------------------------------------------------
 -- Turns a register r into the encoded version via r7 as:
@@ -110,10 +109,10 @@ eatCell rin rout = do
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
 lookupReg :: OneHash ()
-lookupReg = lookupReg' r4 r5 r6
+lookupReg = lookupInstr' r4 r5 r6
 
-lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
-lookupReg' rin n rout = withRegs $ \rin' n' -> do
+lookupInstr' :: Reg -> Reg -> Reg -> OneHash ()
+lookupInstr' rin n rout = withRegs $ \rin' n' -> do
   -- Copy registers to preserve their contents
   copy rin  rin'
   copy n    n'
@@ -124,6 +123,12 @@ lookupReg' rin n rout = withRegs $ \rin' n' -> do
   clear rout
   -- Decode the current value into rout
   decode rin' rout
+
+----------------------------------------------------------------------------
+-- Should update the nth register of r4 with the value in r6 where
+-- r5 = 1^n
+updateReg :: OneHash ()
+updateReg = updateReg' r4 r5 r6
 
 updateReg' :: Reg -> Reg -> Reg -> OneHash ()
 updateReg' regSet n val = withRegs $ \n' tmp -> do
@@ -138,18 +143,12 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
   move regSet tmp
   move tmp regSet
 
-----------------------------------------------------------------------------
--- Should update the nth register of r4 with the value in r6 where
--- r5 = 1^n
-updateReg :: OneHash ()
-updateReg = updateReg' r4 r5 r6
-
 testLookup :: OneHash ()
 testLookup = do
   forM_ [1 .. 10] (\i -> replicateM_ i (add1 r1) >> addh r1)
   toEncoding r1 r2
   replicateM_ 4 (add1 r3)
-  lookupReg' r2 r3 r4
+  lookupInstr' r2 r3 r4
 
 testUpdate :: OneHash ()
 testUpdate = do
@@ -159,4 +158,42 @@ testUpdate = do
 
 test1 = phi (compileValue testLookup) []
 test2 = phi (compileValue testUpdate) []
+
+----------------------------------------------------------------------------
+
+init :: OneHash ()
+init = do
+  toEncoding r1 r2
+  move r2 r1
+  add1 r2
+
+cleanup :: OneHash ()
+cleanup = do
+  clear r1
+  clear r5
+  add1 r5
+  lookupReg
+  decode r6 r1
+  clear r2
+  clear r3
+  clear r4
+  clear r5
+
+mainLoop :: OneHash ()
+mainLoop = mdo
+  init
+  loop <- label
+  lookupInstr' r1 r2 r3 
+  compare r3 emptyreg (end) (noop)
+  step
+  loop
+  end <- label
+  cleanup
+
+-- R1: the input program p
+-- R2: an instruction number 1n
+-- R3: the nth instruction of p
+-- R4: the contents of all regsiters, encoded as above
+-- R5: the register to be manipulated (a number)
+-- R6: lookupReg puts it here
 
