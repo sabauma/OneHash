@@ -2,12 +2,15 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecursiveDo                #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module U where
 
+import           Prelude hiding (init)
 import           Control.Monad
 import           OneHash
 import           Phi           hiding (decode)
+import           Text.Printf
 
 -- It's worth noting that if we "encode" the program via the operation
 -- called toEncoding below, we can totally get away with using lookup
@@ -38,12 +41,14 @@ import           Phi           hiding (decode)
 --
 step :: OneHash ()
 step = withLabels $ \ start end -> mdo
+  comment "begin step function"
   cases r3 end end  noop
   cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> jumpadd end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop
+  comment "end step function"
     where
       write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end
       writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end
@@ -65,6 +70,7 @@ step = withLabels $ \ start end -> mdo
 -- 1#1# => 111# ## 111#
 toEncoding :: Reg -> Reg -> OneHash ()
 toEncoding r r' = withLabels $ \ start end -> mdo
+  comment $ printf "encode program in %s into %s" (show r) (show r')
   cases r (addh r' >> addh r' >> end)
           (add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
@@ -76,6 +82,7 @@ toEncoding r r' = withLabels $ \ start end -> mdo
   cases r (addh r' >> addh r' >> end)
           (addh r' >> addh r' >> add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
+  comment "end encode function"
 
 -- Generate the desired encoding of data, which is slightly different than for
 -- code, which will separate instructions by ##.
@@ -83,9 +90,11 @@ toEncoding r r' = withLabels $ \ start end -> mdo
 -- a terminatior at the end.
 toDataEncoding :: Reg -> Reg -> OneHash()
 toDataEncoding rin rout = do
+  comment $ printf "encode data in %s into %s" (show rin) (show rout)
   loop' rin (add1 rout >> add1 rout) (add1 rout >> addh rout)
   addh rout
   addh rout
+  comment "end data encoding"
 
 -- Decode one cell on an encoded tape
 decode :: Reg -> Reg -> OneHash ()
@@ -109,10 +118,10 @@ eatCell rin rout = do
 -- and place the resulting register in r6. It should also preserve
 -- r5 maybe.
 lookupReg :: OneHash ()
-lookupReg = lookupInstr' r4 r5 r6
+lookupReg = lookupReg' r4 r5 r6
 
-lookupInstr' :: Reg -> Reg -> Reg -> OneHash ()
-lookupInstr' rin n rout = withRegs $ \rin' n' -> do
+lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
+lookupReg' rin n rout = withRegs $ \rin' n' -> do
   -- Copy registers to preserve their contents
   copy rin  rin'
   copy n    n'
@@ -123,6 +132,11 @@ lookupInstr' rin n rout = withRegs $ \rin' n' -> do
   clear rout
   -- Decode the current value into rout
   decode rin' rout
+
+lookupInstr :: Reg -> Reg -> Reg -> OneHash ()
+lookupInstr rin n rout = withRegs $ \rtmp -> do
+  lookupReg' rin n rtmp
+  reverseReg rtmp rout
 
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
@@ -148,7 +162,7 @@ testLookup = do
   forM_ [1 .. 10] (\i -> replicateM_ i (add1 r1) >> addh r1)
   toEncoding r1 r2
   replicateM_ 4 (add1 r3)
-  lookupInstr' r2 r3 r4
+  lookupReg' r2 r3 r4
 
 testUpdate :: OneHash ()
 testUpdate = do
@@ -158,6 +172,9 @@ testUpdate = do
 
 test1 = phi (compileValue testLookup) []
 test2 = phi (compileValue testUpdate) []
+test3 = phi (compileValue $ updateReg' r1 r2 r3) [[], [One, One, One, One, One], [Hash]]
+test4 = phi (compileValue $ lookupReg' r1 r2 r3) [[Hash, Hash, One, Hash, Hash, Hash], [One, One]]
+
 
 ----------------------------------------------------------------------------
 
@@ -180,15 +197,18 @@ cleanup = do
   clear r5
 
 mainLoop :: OneHash ()
-mainLoop = mdo
+mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   init
-  loop <- label
-  lookupInstr' r1 r2 r3 
-  compare r3 emptyreg (end) (noop)
+  lookupInstr r1 r2 r3
   step
-  loop
-  end <- label
-  cleanup
+  lookupInstr r1 r2 r3
+  step
+ -- loop <- label
+ -- cmp r3 emptyreg (end) (noop)
+ -- step
+ -- loop
+ -- end <- label
+ -- cleanup
 
 -- R1: the input program p
 -- R2: an instruction number 1n
@@ -196,4 +216,16 @@ mainLoop = mdo
 -- R4: the contents of all regsiters, encoded as above
 -- R5: the register to be manipulated (a number)
 -- R6: lookupReg puts it here
+
+-- Pick an action depending on whether or not two things are equal
+cmp :: Reg -> Reg -> OneHash () -> OneHash () -> OneHash ()
+cmp a b eq neq = withRegs $ \s1 s2 -> do
+  copy a s1
+  copy b s2
+  withLabels $ \start end -> do
+    cases s1
+      (cases s2 (eq >>  end) (neq >> end) (neq >> end))
+      (cases s2 (neq >> end) start        (neq >> end))
+      (cases s2 (neq >> end) (neq >> end) start)
+    clear s1 >> clear s2
 
