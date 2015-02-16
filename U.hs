@@ -8,6 +8,7 @@ module U where
 import           Control.Monad
 import           OneHash
 import           Phi           hiding (decode)
+import           Text.Printf
 
 
 -- It's worth noting that if we "encode" the program via the operation
@@ -41,12 +42,14 @@ import           Phi           hiding (decode)
 --
 step :: OneHash ()
 step = withLabels $ \ start end -> mdo
+  comment "begin step function"
   cases r3 end end  noop
   cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> jumpadd end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop
+  comment "end step function"
     where
       write1  end = lookupReg >> add1 r6 >> updateReg >> end
       writeh  end = lookupReg >> addh r6 >> updateReg >> end
@@ -66,6 +69,7 @@ step = withLabels $ \ start end -> mdo
 -- 1#1# => 111# ## 111#
 toEncoding :: Reg -> Reg -> OneHash ()
 toEncoding r r' = withLabels $ \ start end -> mdo
+  comment $ printf "encode program in %s into %s" (show r) (show r')
   cases r (addh r' >> addh r' >> end)
           (add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
@@ -77,6 +81,7 @@ toEncoding r r' = withLabels $ \ start end -> mdo
   cases r (addh r' >> addh r' >> end)
           (addh r' >> addh r' >> add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
+  comment "end encode function"
 
 -- Generate the desired encoding of data, which is slightly different than for
 -- code, which will separate instructions by ##.
@@ -84,9 +89,11 @@ toEncoding r r' = withLabels $ \ start end -> mdo
 -- a terminatior at the end.
 toDataEncoding :: Reg -> Reg -> OneHash()
 toDataEncoding rin rout = do
+  comment $ printf "encode data in %s into %s" (show rin) (show rout)
   loop' rin (add1 rout >> add1 rout) (add1 rout >> addh rout)
   addh rout
   addh rout
+  comment "end data encoding"
 
 -- Decode one cell on an encoded tape
 decode :: Reg -> Reg -> OneHash ()
@@ -159,4 +166,17 @@ testUpdate = do
 
 test1 = phi (compileValue testLookup) []
 test2 = phi (compileValue testUpdate) []
+test3 = phi (compileValue $ updateReg' r1 r2 r3) [[], [One, One, One, One, One], [Hash]]
+test4 = phi (compileValue $ lookupReg' r1 r2 r3) [[Hash, Hash, One, Hash, Hash, Hash], [One, One]]
 
+-- Pick an action depending on whether or not two things are equal
+compare :: Reg -> Reg -> OneHash () -> OneHash () -> OneHash ()
+compare a b eq neq = withRegs $ \s1 s2 -> do
+  copy a s1
+  copy b s2
+  withLabels $ \start end -> do
+    cases s1
+      (cases s2 (eq >>  end) (neq >> end) (neq >> end))
+      (cases s2 (neq >> end) start        (neq >> end))
+      (cases s2 (neq >> end) (neq >> end) start)
+    clear s1 >> clear s2
