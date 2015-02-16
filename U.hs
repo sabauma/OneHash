@@ -139,7 +139,7 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
   -- Seek to the desired register
   loop' n' (eatCell regSet tmp >> addh tmp >> addh tmp) noop
   -- Consume the current register and throw it away
-  withRegs $ eatCell regSet
+  withRegs $ decode regSet
   toDataEncoding val tmp
   -- Move everything back
   move regSet tmp
@@ -166,7 +166,7 @@ testUpdate = do
 
 test1 = phi (compileValue testLookup) []
 test2 = phi (compileValue testUpdate) []
-test3 = phi (compileValue $ updateReg' r1 r2 r3) [[], [One, One, One, One, One], [Hash]]
+test3 = phi (compileValue $ updateReg' r1 r2 r3 >> updateReg' r1 r4 r5) [[], [One, One, One], [Hash]]
 test4 = phi (compileValue $ lookupReg' r1 r2 r3) [[Hash, Hash, One, Hash, Hash, Hash], [One, One]]
 
 -- Pick an action depending on whether or not two things are equal
@@ -180,3 +180,4 @@ compare a b eq neq = withRegs $ \s1 s2 -> do
       (cases s2 (neq >> end) start        (neq >> end))
       (cases s2 (neq >> end) (neq >> end) start)
     clear s1 >> clear s2
+
