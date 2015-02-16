@@ -2,22 +2,21 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RecursiveDo                #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 module U where
 
+import           Prelude hiding (init)
 import           Control.Monad
 import           OneHash
 import           Phi           hiding (decode)
 import           Text.Printf
-
 
 -- It's worth noting that if we "encode" the program via the operation
 -- called toEncoding below, we can totally get away with using lookup
 -- for both R4 and the program instructions in R1 by abstracting it a
 -- bit more.
 ----------------------------------------------------------------------------
--- The "step" step.
---
 -- Assumptions:
 --
 -- 0) The registers are as follows:
@@ -51,14 +50,16 @@ step = withLabels $ \ start end -> mdo
   cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop
   comment "end step function"
     where
-      write1  end = lookupReg >> add1 r6 >> updateReg >> end
-      writeh  end = lookupReg >> addh r6 >> updateReg >> end
+      write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end
+      writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end
       jumpadd end = move r5 r2 >> end
       jumpsub end = subDestructive r2 r5 >> end
       caseh   end = lookupReg >> cases r6 (add1 r2)
                                    (add1 r2 >> add1 r2)
                                    (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
+
+
 
 ----------------------------------------------------------------------------
 -- Turns a register r into the encoded version via r7 as:
@@ -132,6 +133,17 @@ lookupReg' rin n rout = withRegs $ \rin' n' -> do
   -- Decode the current value into rout
   decode rin' rout
 
+lookupInstr :: Reg -> Reg -> Reg -> OneHash ()
+lookupInstr rin n rout = withRegs $ \rtmp -> do
+  lookupReg' rin n rtmp
+  reverseReg rtmp rout
+
+----------------------------------------------------------------------------
+-- Should update the nth register of r4 with the value in r6 where
+-- r5 = 1^n
+updateReg :: OneHash ()
+updateReg = updateReg' r4 r5 r6
+
 updateReg' :: Reg -> Reg -> Reg -> OneHash ()
 updateReg' regSet n val = withRegs $ \n' tmp -> do
   copy n n'
@@ -144,12 +156,6 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
   -- Move everything back
   move regSet tmp
   move tmp regSet
-
-----------------------------------------------------------------------------
--- Should update the nth register of r4 with the value in r6 where
--- r5 = 1^n
-updateReg :: OneHash ()
-updateReg = updateReg' r4 r5 r6
 
 testLookup :: OneHash ()
 testLookup = do
@@ -169,9 +175,51 @@ test2 = phi (compileValue testUpdate) []
 test3 = phi (compileValue $ updateReg' r1 r2 r3 >> updateReg' r1 r4 r5) [[], [One, One, One], [Hash]]
 test4 = phi (compileValue $ lookupReg' r1 r2 r3) [[Hash, Hash, One, Hash, Hash, Hash], [One, One]]
 
+
+----------------------------------------------------------------------------
+
+init :: OneHash ()
+init = do
+  toEncoding r1 r2
+  move r2 r1
+  add1 r2
+
+cleanup :: OneHash ()
+cleanup = do
+  clear r1
+  clear r5
+  add1 r5
+  lookupReg
+  decode r6 r1
+  clear r2
+  clear r3
+  clear r4
+  clear r5
+
+mainLoop :: OneHash ()
+mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
+  init
+  lookupInstr r1 r2 r3
+  step
+  lookupInstr r1 r2 r3
+  step
+ -- loop <- label
+ -- cmp r3 emptyreg (end) (noop)
+ -- step
+ -- loop
+ -- end <- label
+ -- cleanup
+
+-- R1: the input program p
+-- R2: an instruction number 1n
+-- R3: the nth instruction of p
+-- R4: the contents of all regsiters, encoded as above
+-- R5: the register to be manipulated (a number)
+-- R6: lookupReg puts it here
+
 -- Pick an action depending on whether or not two things are equal
-compare :: Reg -> Reg -> OneHash () -> OneHash () -> OneHash ()
-compare a b eq neq = withRegs $ \s1 s2 -> do
+cmp :: Reg -> Reg -> OneHash () -> OneHash () -> OneHash ()
+cmp a b eq neq = withRegs $ \s1 s2 -> do
   copy a s1
   copy b s2
   withLabels $ \start end -> do

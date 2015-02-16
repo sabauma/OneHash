@@ -1,5 +1,6 @@
 module Phi
   ( Value (..)
+  , runPhi
   , phi
   , phi'
   , decode
@@ -11,7 +12,7 @@ import           Control.Applicative
 import qualified Data.IntMap         as M
 import qualified Data.Sequence       as S
 import qualified Data.Vector         as V
-import           OneHash             (Value (..))
+import           OneHash             (Value (..), OneHash (..), compileValue)
 import           Data.Foldable       (toList)
 
 type Register = S.Seq Value
@@ -87,4 +88,8 @@ phi' p = go 0
 
 extract :: State -> [Value]
 extract st = toList $ st M.! 1
+
+runPhi :: OneHash a -> [String] -> State
+runPhi p regs = phi (compileValue p) $ map (\ x -> map fromChar x) regs 
+
 
