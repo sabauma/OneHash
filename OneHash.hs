@@ -7,7 +7,7 @@ module OneHash
   , Scratches (..)
   , OneHash
   , Value (..)
-  , compile, compile', compileValue
+  , compile, compile', compile'', compileValue
   , add1, addh
   , comment
   , cases
@@ -155,6 +155,21 @@ encode' = foldr (++) "" . map enc
     enc (CaseF r)     = unary r ++ "#####"
     enc (CommentF s)  = ";; " ++ s
 
+encode'' :: [Flattened] -> String
+-- encode'' = foldr (++) "" . map enc
+encode'' = unlines . map enc
+  where
+    unary :: Int -> String
+    unary n = "1^{" ++ (show n) ++ "}"
+
+    enc :: Flattened -> String
+    enc (Add1F r)     = unary r ++ "#"
+    enc (AddHF r)     = unary r ++ "##"
+    enc (ForwardF r)  = unary r ++ "###"
+    enc (BackwardF r) = unary r ++ "####"
+    enc (CaseF r)     = unary r ++ "#####"
+    enc (CommentF s)  = ";; " ++ s
+
 encode :: [Flattened] -> String
 encode = unlines . map enc
   where
@@ -193,6 +208,7 @@ compile = encode . execOneHash
 
 compile' :: OneHash a -> String
 compile' = encode' . filter (not . isComment) . execOneHash
+compile'' = encode''  . execOneHash
 
 newtype Label = MkL { name :: String }
   deriving Show
