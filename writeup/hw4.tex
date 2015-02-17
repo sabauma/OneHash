@@ -48,7 +48,62 @@
 
 \paragraph{Register Encoding.}
 
+\begin{lstlisting}
+toEncoding :: Reg -> Reg -> OneHash ()
+toEncoding r r' = withLabels $ \ start end -> mdo
+  comment $ printf 
+              "encode program in %s into %s" 
+              (show r) (show r')
+  cases r (addh r' >> addh r' >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  oneloop <- label
+  cases r (addh r' >> addh r' >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  hashloop <- label
+  cases r (addh r' >> addh r' >> end)
+          (addh r' >> addh r' >> 
+           add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  comment "end encode function"
+
+-- Generate the desired encoding of data, which 
+-- is slightly different than for code, which
+-- will separate instructions by ##. This 
+-- converts the entire contents of rin to the 
+-- encoding and places a terminator at the end.
+toDataEncoding :: Reg -> Reg -> OneHash()
+toDataEncoding rin rout = do
+  comment $ printf 
+              "encode data in %s into %s" 
+              (show rin) (show rout)
+  loop' rin (add1 rout >> add1 rout) 
+            (add1 rout >> addh rout)
+  addh rout
+  addh rout
+  comment "end data encoding"
+\end{lstlisting}
+
 \paragraph{Program Encoding.}
+
+Program encoding follows directly from register encoding: ...
+
+\paragraph{Decoding Entries.}
+
+Any register or program instruction may be decoded as...
+
+\begin{lstlisting}
+-- Decode one cell on an encoded tape
+decode :: Reg -> Reg -> OneHash ()
+decode rin rout = do
+  start <- label
+  cases rin noop
+    (cases rin noop 
+               (add1 rout >> start) 
+               (addh rout >> start))
+    (cases rin noop noop noop)
+\end{lstlisting}
 
 \section{Lookups and Updates}
 
