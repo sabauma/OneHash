@@ -340,7 +340,7 @@ instance Scratches (OneHash a) where
   withRegs' = void
 
 instance Scratches b => Scratches (Reg -> b) where
-  withRegs f = withScratchRegister $ \r -> clear r >> withRegs (f r)
+  withRegs f = withScratchRegister $ \r -> withRegs (f r) >> clear r
   withRegs'  = withScratchRegister . (withRegs' .)
 
 -- Emulate the with-labels operation found in William Byrd's solution.
