@@ -283,7 +283,7 @@ loop' r = loop r `on` k2
 -- Though this function is convenient, it duplicates the code for `m`, so
 -- consider using `loop'` if you only expect one character type to be in `r`.
 while :: Reg -> OneHash () -> OneHash ()
-while r m = loop' r m m
+while r m = withLabels $ \start end -> cases r end noop noop >> m >> start
 
 -- Functions for register allocation
 popReg :: OneHash Reg

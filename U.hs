@@ -59,8 +59,6 @@ step = withLabels $ \ start end -> mdo
                                    (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
 
-
-
 ----------------------------------------------------------------------------
 -- Turns a register r into the encoded version via r7 as:
 -- 1     => 11
