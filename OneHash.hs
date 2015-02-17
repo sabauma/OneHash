@@ -7,7 +7,7 @@ module OneHash
   , Scratches (..)
   , OneHash
   , Value (..)
-  , compile, compile', compileValue
+  , compile, compile', compile'', compileValue
   , add1, addh
   , comment
   , cases
@@ -23,11 +23,12 @@ module OneHash
   , move
   , noop
   , fillCounter
-  , double
+  , add
+  , mult
   , power
+  , double
   , getCharAt
   , reverseReg
-
   , r1, r2, r3, r4, r5, r6, r7, r8, r9
   , reg
   , subDestructive
@@ -140,6 +141,35 @@ computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
     -- Maps labels to instruction indices
     mapping = computeMapping xs
 
+encode' :: [Flattened] -> String
+encode' = foldr (++) "" . map enc
+  where
+    unary :: Int -> String
+    unary n = replicate n '1'
+
+    enc :: Flattened -> String
+    enc (Add1F r)     = unary r ++ "#"
+    enc (AddHF r)     = unary r ++ "##"
+    enc (ForwardF r)  = unary r ++ "###"
+    enc (BackwardF r) = unary r ++ "####"
+    enc (CaseF r)     = unary r ++ "#####"
+    enc (CommentF s)  = ";; " ++ s
+
+encode'' :: [Flattened] -> String
+-- encode'' = foldr (++) "" . map enc
+encode'' = unlines . map enc
+  where
+    unary :: Int -> String
+    unary n = "1^{" ++ (show n) ++ "}"
+
+    enc :: Flattened -> String
+    enc (Add1F r)     = unary r ++ "#"
+    enc (AddHF r)     = unary r ++ "##"
+    enc (ForwardF r)  = unary r ++ "###"
+    enc (BackwardF r) = unary r ++ "####"
+    enc (CaseF r)     = unary r ++ "#####"
+    enc (CommentF s)  = ";; " ++ s
+
 encode :: [Flattened] -> String
 encode = unlines . map enc
   where
@@ -152,7 +182,6 @@ encode = unlines . map enc
     enc (ForwardF r)  = unary r ++ "###"
     enc (BackwardF r) = unary r ++ "####"
     enc (CaseF r)     = unary r ++ "#####"
-    enc (CommentF s)  = ";; " ++ s
 
 encodeValue :: [Flattened] -> [Value]
 encodeValue = concatMap enc
@@ -178,7 +207,8 @@ compile :: OneHash a -> String
 compile = encode . execOneHash
 
 compile' :: OneHash a -> String
-compile' = encode . filter (not . isComment) . execOneHash
+compile' = encode' . filter (not . isComment) . execOneHash
+compile'' = encode''  . execOneHash
 
 newtype Label = MkL { name :: String }
   deriving Show

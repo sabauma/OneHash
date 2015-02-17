@@ -42,6 +42,7 @@ import           Text.Printf
 step :: OneHash ()
 step = withLabels $ \ start end -> mdo
   comment "begin step function"
+  clear r5
   cases r3 end end  noop
   cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop
   cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop
@@ -131,10 +132,10 @@ lookupReg' rin n rout = withRegs $ \rin' n' -> do
   -- Decode the current value into rout
   decode rin' rout
 
-lookupInstr :: Reg -> Reg -> Reg -> OneHash ()
-lookupInstr rin n rout = withRegs $ \rtmp -> do
-  lookupReg' rin n rtmp
-  reverseReg rtmp rout
+lookupInstr :: OneHash ()
+lookupInstr = withRegs $ \rtmp -> do
+  lookupReg' r1 r2 rtmp
+  reverseReg rtmp r3
 
 ----------------------------------------------------------------------------
 -- Should update the nth register of r4 with the value in r6 where
@@ -188,7 +189,7 @@ cleanup = do
   clear r5
   add1 r5
   lookupReg
-  decode r6 r1
+  move r6 r1
   clear r2
   clear r3
   clear r4
@@ -197,16 +198,13 @@ cleanup = do
 mainLoop :: OneHash ()
 mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   init
-  lookupInstr r1 r2 r3
+  loop <- label
+  lookupInstr
+  cmp r3 emptyreg (end) (noop)
   step
-  lookupInstr r1 r2 r3
-  step
- -- loop <- label
- -- cmp r3 emptyreg (end) (noop)
- -- step
- -- loop
- -- end <- label
- -- cleanup
+  loop
+  end <- label
+  cleanup
 
 -- R1: the input program p
 -- R2: an instruction number 1n

@@ -1,0 +1,295 @@
+%\documentclass[11pt, onecolumn, preprint, nocopyrightspace]{sigplanconf}
+\documentclass[10pt, preprint, nocopyrightspace]{sigplanconf}
+
+\title{The Universal \oh Machine\\\large Recursion Theory\\ Homework 4}
+
+\authorinfo{Spenser Bauman \and Tori Lewis \and Cameron Swords}
+           {Indiana University}
+           {github.link.to.appear}
+
+\usepackage{amsmath, listings, amsthm, amssymb, proof, mathabx}
+\usepackage{textcomp} \usepackage{seqsplit} \usepackage{tikz}
+\usepackage{fix2col} \usepackage{stmaryrd} \usepackage{url}
+\usepackage{scrextend} 
+\usepackage{xspace} 
+
+\newtheorem{name}{Printed output}
+\newtheorem{defn}{Definition} \newtheorem{ex}{Example} \newtheorem{ans}{Answer}
+\newtheorem*{thm}{Theorem}
+
+\newcommand{\cam}[1]{\emph{Cam: #1}}
+
+\newenvironment{proofcases}[1][] {\textbf{\emph{Proof.}
+#1}\newcommand{\case}[1]{\underline{Case [##1]:}} \begin{addmargin}[1em]{0em}
+\setlength{\parskip}{1em}}
+{\end{addmargin}\setlength{\parskip}{0em}\begin{flushright}$\qed$\end{flushright}}
+
+\newcommand{\oh}{$1\#$\xspace} 
+\renewcommand{\phi}{\varphi}
+\newcommand{\appref}[1]{Appendix \ref{#1}}
+%\lstset{basicstyle=\sffamily\footnotesize} 
+\lstset{
+  language=Haskell,
+  basicstyle=\sffamily\footnotesize,
+  literate=
+  {\\}{{$\lambda$}}1
+  {<-}{{$\leftarrow$}}1
+  {->}{{$\rightarrow$}}1
+  {::}{{$:\!\,:$}}1
+} 
+
+\begin{document} 
+
+\maketitle
+
+\section{Introduction and Overview}
+
+\section{Encodings}
+
+\paragraph{Register Encoding.}
+
+\begin{lstlisting}
+toEncoding :: Reg -> Reg -> OneHash ()
+toEncoding r r' = withLabels $ \ start end -> mdo
+  comment $ printf 
+              "encode program in %s into %s" 
+              (show r) (show r')
+  cases r (addh r' >> addh r' >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  oneloop <- label
+  cases r (addh r' >> addh r' >> end)
+          (add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  hashloop <- label
+  cases r (addh r' >> addh r' >> end)
+          (addh r' >> addh r' >> 
+           add1 r' >> add1 r' >> oneloop)
+          (add1 r' >> addh r' >> hashloop)
+  comment "end encode function"
+
+-- Generate the desired encoding of data, which 
+-- is slightly different than for code, which
+-- will separate instructions by ##. This 
+-- converts the entire contents of rin to the 
+-- encoding and places a terminator at the end.
+toDataEncoding :: Reg -> Reg -> OneHash()
+toDataEncoding rin rout = do
+  comment $ printf 
+              "encode data in %s into %s" 
+              (show rin) (show rout)
+  loop' rin (add1 rout >> add1 rout) 
+            (add1 rout >> addh rout)
+  addh rout
+  addh rout
+  comment "end data encoding"
+\end{lstlisting}
+
+\paragraph{Program Encoding.}
+
+Program encoding follows directly from register encoding: ...
+
+\paragraph{Decoding Entries.}
+
+Any register or program instruction may be decoded as...
+
+\begin{lstlisting}
+-- Decode one cell on an encoded tape
+decode :: Reg -> Reg -> OneHash ()
+decode rin rout = do
+  start <- label
+  cases rin noop
+    (cases rin noop 
+               (add1 rout >> start) 
+               (addh rout >> start))
+    (cases rin noop noop noop)
+\end{lstlisting}
+
+\section{Lookups and Updates}
+
+\paragraph{Register Lookup.}
+
+Register lookup ...
+
+\begin{lstlisting}
+lookupReg :: OneHash ()
+lookupReg = lookupReg' r4 r5 r6
+
+lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
+lookupReg' rin n rout = withRegs $ 
+  \ rin' n' -> do
+    -- Copy registers to preserve their contents
+    copy rin  rin'
+    copy n    n'
+    -- Convert to 0-indexing
+    chomp n'
+    -- Consume the first n things
+    loop' n' (decode rin' rout) noop
+    clear rout
+    -- Decode the current value into rout
+    decode rin' rout
+\end{lstlisting}
+
+\paragraph{Register Update.}
+
+Register update...
+
+\begin{lstlisting}
+updateReg :: OneHash ()
+updateReg = updateReg' r4 r5 r6
+
+updateReg' :: Reg -> Reg -> Reg -> OneHash ()
+updateReg' reg n val = withRegs $ 
+  \ n' tmp -> do
+    copy n n'
+    chomp n'
+    -- Seek to the desired register
+    loop' n' 
+          (eatCell reg tmp >> 
+           addh tmp >> 
+           addh tmp) 
+          noop
+    -- Consume the current register 
+    -- and throw it away
+    withRegs $ eatCell reg
+    toDataEncoding val tmp
+    -- Move everything back
+    move reg tmp
+    move tmp reg
+
+-- Eats a cell in the encoding, but does not 
+-- decode it.  This will not save the trailing 
+-- termination character.
+eatCell :: Reg -> Reg -> OneHash ()
+eatCell rin rout = do
+  start <- label
+  cases rin noop
+    (add1 rout >> 
+     cases rin noop 
+               (add1 rout >> start) 
+               (addh rout >> start))
+    (cases rin noop noop noop)
+\end{lstlisting}
+
+\paragraph{Instruction Lookup.}
+
+Program instruction lookup...
+
+\begin{lstlisting}
+lookupInstr :: OneHash ()
+lookupInstr = withRegs $ \rtmp -> do
+  lookupReg' r1 r2 rtmp
+  reverseReg rtmp r3
+\end{lstlisting}
+
+\section{Program Steps}
+
+\begin{figure*}
+\begin{lstlisting}
+step :: OneHash () 
+step = withLabels $ \ start end -> mdo 
+  comment "begin step function" 
+  clear r5 
+  cases r3 end end  noop 
+  cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop 
+  cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop 
+  cases r3 end (add1 r5 >> move r3 r5 >> jumpadd end) noop 
+  cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop 
+  cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop 
+  comment "end step function" 
+    where 
+      write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end 
+      writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end 
+      jumpadd end = move r5 r2 >> end 
+      jumpsub end = subDestructive r2 r5 >> end 
+      caseh   end = lookupReg >> cases r6 (add1 r2) 
+                                   (add1 r2 >> add1 r2) 
+                                   (add1 r2 >> add1 r2 >> add1 r2) 
+                              >> updateReg >> end 
+\end{lstlisting}
+\caption{The main step relation for the universal \oh machine.}
+\end{figure*}
+
+\section{Main Loop}
+
+\begin{figure}
+\begin{lstlisting}
+mainLoop :: OneHash ()
+mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
+  init
+  loop <- label
+  lookupInstr
+  cmp r3 emptyreg (end) (noop)
+  step
+  loop
+  end <- label
+  cleanup
+\end{lstlisting}
+\caption{The main loop of the universal \oh machine.}
+\end{figure}
+
+\paragraph{Initialization.}
+
+To initialize the program, we first...
+
+\begin{lstlisting}
+init :: OneHash ()
+init = do
+  toEncoding r1 r2
+  move r2 r1
+  add1 r2
+\end{lstlisting}
+
+\paragraph{Main Loop.}
+
+\paragraph{Cleanup and Final Answer.}
+
+To clean up the computation and provide the final result...
+
+\begin{lstlisting}
+cleanup :: OneHash ()
+cleanup = do
+  clear r1
+  clear r5
+  add1 r5
+  lookupReg
+  move r6 r1
+  clear r2
+  clear r3
+  clear r4
+  clear r5
+\end{lstlisting}
+
+\section{Conclusion}
+
+\paragraph{Division of Labor.} The division of labor is as follows:
+\begin{itemize}
+\item \textbf{Algorithmic Design.} 
+      Spenser Bauman, Tori Lewis, and Cameron Swords collectively developed the
+      algorithm design and overall approach to implement the universal machine.
+\item \textbf{Haskell Framework.}
+      Spenser Bauman constructed a \oh compiler during previous homework
+      assignments, including a small standard library of functions including
+      operations like \lstinline{clear} and \lstinline{move}. This
+      implementation was extended by Spenser Bauman and Cameron Swords during
+      implementation of the universal machine.
+\item \textbf{Running Code.} 
+      The Haskell implementation of the universal machine was constructed by
+      Spenser Bauman (who write the encoding, decoding, and lookup mechanisms
+      for registers) and Cameron Swords (the main step function and the main
+      loop of the program) with design feedback from Tori Lewis.
+\item \textbf{Write-Up.}
+      The exposition of this report was developed by Tori Lewis, summarizing the
+      results and explaining the final construction of the universal \oh
+      machine. 
+\end{itemize}
+
+\clearpage
+
+\appendix
+
+\section{Final Program}
+
+\input{app1}
+
+\end{document}
