@@ -156,6 +156,19 @@ updateReg' reg n val = withRegs $
     -- Move everything back
     move reg tmp
     move tmp reg
+
+-- Eats a cell in the encoding, but does not 
+-- decode it.  This will not save the trailing 
+-- termination character.
+eatCell :: Reg -> Reg -> OneHash ()
+eatCell rin rout = do
+  start <- label
+  cases rin noop
+    (add1 rout >> 
+     cases rin noop 
+               (add1 rout >> start) 
+               (addh rout >> start))
+    (cases rin noop noop noop)
 \end{lstlisting}
 
 \paragraph{Instruction Lookup.}
