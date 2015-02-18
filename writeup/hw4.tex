@@ -311,9 +311,6 @@ toEncoding r r' = withLabels $ \ start end -> mdo
 To further explain this encoding, consider the example encoding when $p =
 \#\#\#\#\#1\#$, presented in \figref{fig:encode-prog}. 
 
-[If time allows a FSA of this process]
-
-
 \paragraph{Decoding Entries.}
 
 Decoding is the straight-forward inverse of encoding: when we see a $1$, we know
@@ -432,8 +429,6 @@ eatCell rin rout = do
     (cases rin noop noop noop)
 \end{lstlisting}
 \end{minipage}
-
-[*a picture would be great like boxes moving around with arrows or something *]
 
 \section{Program Steps}
 
