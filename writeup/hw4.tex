@@ -5,7 +5,7 @@
 
 \authorinfo{Spenser Bauman \and Tori Lewis \and Cameron Swords}
            {Indiana University}
-           {github.link.to.appear}
+           {http://github.com/sabauma/OneHash}
 
 \usepackage{amsmath, listings, amsthm, amssymb, proof, mathabx}
 \usepackage{textcomp} \usepackage{seqsplit} \usepackage{tikz}
@@ -27,15 +27,18 @@
 \newcommand{\oh}{$1\#$\xspace}
 \renewcommand{\phi}{\varphi}
 \newcommand{\appref}[1]{Appendix \ref{#1}}
+\newcommand{\figref}[1]{Figure \ref{#1}}
 %\lstset{basicstyle=\sffamily\footnotesize}
 \lstset{
   language=Haskell,
   basicstyle=\sffamily\footnotesize,
+  breaklines=true,
   literate=
   {\\}{{$\lambda$}}1
   {<-}{{$\leftarrow$}}1
   {->}{{$\rightarrow$}}1
   {::}{{$:\!\,:$}}1
+  {>>}{{$>\!>$}}1
 }
 
 \begin{document}
@@ -44,28 +47,46 @@
 
 \section{Introduction and Overview}
 
-This is an explanation and outline of one implementation of a universal program
-in \oh. We aim to fully explain what our program does as well as the reasoning
-behind some unusual choices during the development of our program. 
+This is an explanation and outline of an implementation of a universal program
+in \oh. This work focused on semantically-clean solutions to encoding the universal
+program instead of a concise, compact solution, and the result is a very small
+Haskell implementation that constructs a (quite large) \oh implementation.
 
-This universal program was developed using an embedding of 1# in Haskell
-developed by Spencer Bauman earlier in the course. This allowed us to use some
-of the comforts in Haskell, like notation and type declarations, so that
-sharing and understanding each others work was much easier. 
+This universal program was developed using an embedding of \oh in Haskell
+developed by Spencer Bauman earlier in the course, which has allowed us many of the
+traditional comforts of Haskell in our implementation, including: notation, type
+declarations, monadic-style programming, and a rich abstraction layer over the
+target language. Furthermore, the ideas are clear and concise in the final
+implementation.
 
-The general idea we used was to encode both the input program and the input
-registers and their contents, then loop through the instructions of p using a
-lookup function, a step function, and an update function to manipulate the data
-in the encoded registers. 
+Our general approach diverges from the canonical approach by fully encoding the input
+program before usage, an implementation detail that reduces the instruction
+lookup mechanism to the register lookup problem. The main loop of the program 
+looks up a single instruction, runs it with the appropriate register updates,
+and then loops so long as it finds an instruction at its new program counter.
 
-In the following sections we’ll explain how each of the major player in this
-program work, why they correct, provide the code (in Haskell), and, when
-needed, walk through an example. 
+In the following sections we’ll explain how each of the components of this
+program work, why they correctly perform their task, and provide the Haskell
+implementation along-side the discussion. When necessary, we will also present
+examples. 
+We use the canonical registers as proposed by Moss~\cite{moss}: $R1$ contains the
+program,
+$R2$ the program counter, $R3$ the current instruction, and
+$R4$ the encoded registers. We also reserve $R5$ for the ``working register'',
+the number of the register we're currently working on, and $R6$ for its decoded
+contents.
 
-The full \oh code, the Haskell code for embedding \oh, (*some other stuff*) are
-included in the appendix. 
+
+
+The full \oh code and the Haskell code for embedding \oh are included in the
+appendix, and the entire Haskell implementation (with resultant universal
+program) can be found at 
+\begin{center}
+\lstinline{http://github.com/sabauma/OneHash}
+\end{center}
 
 \section{Haskell Implementation}
+
 
 Rather than go through the tedious and error prone process of writing \oh code,
 we made use of a Haskell DSL (which we also developed) for composing \oh
@@ -105,50 +126,166 @@ cases r c1 c2 c3 =
 Such primitives are used to generate more complex looping structures and high level
 operations like \texttt{clear}, \texttt{copy}, and \texttt{reverseReg}.
 
+\begin{lstlisting}
+lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
+lookupReg' rin n rout = withRegs $
+  \ rin' n' -> do
+    -- Copy registers to preserve their contents
+    copy rin  rin'
+    copy n    n'
+    -- Convert to 0-indexing
+    chomp n'
+    -- Consume the first n things
+    loop' n' (decode rin' rout) noop
+    clear rout
+    -- Decode the current value into rout
+    decode rin' rout
+\end{lstlisting}
+
+To further explain this encoding, consider the example encoding where the
+encoded sequence is $11\#\#1\#\#\#11\#\#$ and we are looking for the second
+register, presented in \figref{fig:lookup}. Once again, \lstinline{withRegs}
+clears out the allocated registers after usage (so, in this case,
+\lstinline{rin'}) when the clause is done.
+
+\begin{figure*}
+\begin{tabular}{llp{.64\textwidth}}
+$R_{in}$ & $R_{out}$ & Description\\\hline
+11\#\#\#\#\#1\# &  & 
+Encode does a case on the register containing $p$.
+Since the first thing it eats is a 1, it writes two 1’s to out register and does
+a second case on the register  P was in.\\
+
+\\  1\#\#\#\#\#1\# &
+ 11 &
+Again,  since it eats another 1, it writes two 1s but this time it loops back to
+the start of this nested case. 
+\\ \#\#\#\#\#1\# &
+ 1111 &
+This time it eats a \#, so it writes a 1 followed by a \#. Then it does a second
+nested case on the same register P was in . 
+\\ \#\#\#\#1\# &
+ 11111\# &
+Again it eats a \#, so it writes a 1 followed by a \#, and loops back to the
+start of this nested case statement. The step repeats until it eats all of the
+consecutive hashes. 
+\\ \#\#\#1\# &
+11111\#1\# &
+\\1\# &
+  11111\#1\#1\#1\#1\# &
+When it eats a one after hashes, it writes two \#s followed by two 1s and does
+the first nested case statement (labeled one loop)
+\\\# &
+ 11111\#1\#1\#1\#1\#\#\#11 &
+\\  &
+ 11111\#1\#1\#1\#1\#\#\#11 &
+Since RIN is empty encode writes two \#s then ends.  
+\\ &
+  11111\#1\#1\#1\#1\#\#\#11\#\# &
+\\
+\end{tabular}
+\caption{\label{fig:encode-prog}An encoding of the program \#\#\#\#\#1\#.}
+\end{figure*}
+
+
+
+\begin{figure*}
+\begin{tabular}{lllllp{.44\textwidth}}
+$rin$ & $n$ & $rin'$ & $n'$ & $rout$ & Description\\
+11\#\#1\#\#\#11\#\#  & 11  & & & &
+First Lookup copies the register containing the encoded sequence and the
+register with the index value to two new registers.   \\
+
+11\#\#1\#\#\#11\#\#  &
+11  &
+11\#\#1\#\#\#11\#\#  &
+11  &
+  &
+The first thing that look up does it remove the first one from the new indexing
+register r2, so that the last word it destroys is the (n-1)th word.    \\
+11\#\#1\#\#\#11\#\#  &
+1  &
+11\#\#1\#\#\#11\#\#  &
+1 &
+  &
+Then Lookup loops through (as a case on r2) decoding the words to $rout$.  \\
+11\#\#1\#\#\#11\#\#  &
+11  &
+1\#\#\#11\#\#  &
+  &
+1 & 
+At the end of the loop, it clears out $rout$.\\
+11\#\#1\#\#\#11\#\#  &
+11  &
+1\#\#\#11\#\#  &
+&
+&
+Finally Lookup decodes the nth instruction into r out  \\
+11\#\#1\#\#\#11\#\#  &
+11  &
+11\#\#  &
+&
+\#  \\
+\end{tabular}
+\caption{\label{fig:lookup}A lookup through an encoded register sequence.}
+\end{figure*}
+
+
+
 \section{Encodings}
 
-We chose to encode the input program as well as the input registers so that we could use the same lookup function and indexing on instruction lines that we would use for the encoded registers. 
+Before we discuss the details of encoding, we make one critical observation: if 
+we encode the input using the same encoding strategy as the machine registers,
+then we may use the same lookup procedure and indexing mechanism for instruction
+lines and encoded registers. This is a serious simplification to the original
+proposal for the instruction lookup procedure, because it allows us to cleanly
+find the exact instruction we need.
 
-The encoding of registers is similar to the encoding for programs except that the \#\# marker is between registers instead of words. This is the exact method for encoding registers  that was provided in lecture. A more detailed explanation of register encoding is given by Larry Moss on the text register webpage. 
-
-The encoding for programs is done by adding a 1 before each symbol in a word and a \#\# between each word.  This is clearly and injective encoding, thus program content is preserved. 
-
-(insert picture Cam will draw in latex magic FTA of encoding) 
-
-Example: P= 11\#\#\#\#\#1\# 
-
-RIN: 11\#\#\#\#\#1\#
-ROUT: 
-Encode does a case on the register containing P
-Since the first thing it eats is a 1, it writes two 1’s to out register and does a second case on the register  P was in.
-RIN:  1\#\#\#\#\#1\#
-ROUT: 11
-Again,  since it eats another 1, it writes two 1s but this time it loops back to the start of this nested case. 
-RIN: \#\#\#\#\#1\#
-ROUT: 1111
-This time it eats a \#, so it writes a 1 followed by a \#. Then it does a second nested case on the same register P was in . 
-RIN: \#\#\#\#1\#
-ROUT: 11111\#
-Again it eats a \#, so it writes a 1 followed by a \#, and loops back to the start of this nested case statement. The step repeats until it eats all of the consecutive hashes. 
-RIN: \#\#\#1\#
-ROUT:11111\#1\#
-RIN:1\#
-ROUT:  11111\#1\#1\#1\#1\#
-When it eats a one after hashes, it writes two \#s followed by two 1s and does the first nested case statement (labeled one loop)
-RIN:\#
-ROUT: 11111\#1\#1\#1\#1\#\#\#11
-RIN: 
-ROUT: 11111\#1\#1\#1\#1\#\#\#11
-Since RIN is empty encode writes two \#s then ends. 
-RIN:
-ROUT:  11111\#1\#1\#1\#1\#\#\#11\#\#
-(*This example would look good in basically any other format*)
-
-Decoding is the straightforward inverse of encoding. 
-
-
+We use the encoding proposed by Moss~\cite{moss}, wherein each $1$ is turned into a
+$11$, each $\#$ into a $1\#$, and each instruction (and register) has its end
+encoded as $\#\#$. That is, the encoding for programs (and registers) entails
+adding a $1$ before each symbol of each word and a $\#\#$ between each word
+(instruction or register). This is a straight-forward injection encoding, and
+thus the program and register contents are perfectly preserved.
 
 \paragraph{Register Encoding.}
+
+Register encoding uses the \lstinline{toDataEncoding} procedure, outlined below,
+to convert a single register into its encoded version, placing a $\#\#$ at the
+end. Once the register value is thus encoded, it is placed into the correct
+register (with the appropriate number of $\#\#$ delimiters) by
+\lstinline{updateReg} below. 
+
+\begin{lstlisting}
+toDataEncoding :: Reg -> Reg -> OneHash()
+toDataEncoding rin rout = do
+  comment $ printf
+              "encode data in %s into %s"
+              (show rin) (show rout)
+  loop' rin (add1 rout >> add1 rout)
+            (add1 rout >> addh rout)
+  addh rout
+  addh rout
+  comment "end data encoding"
+\end{lstlisting}
+
+We accomplish this encoding process with an loop over the input value via
+\lstinline{loop}, which takes two sub-programs: the first is run when the input
+register contains a $1$ and the second when it contains a $\#$. The loop
+construct terminates when it has exhausted the input register.  We use this to
+write a $11$ to the output register when the input register reads a $1$ and
+$1\#$ when it reads a $\#$, repeatedly, until the input is empty.  Finally we
+add $\#\#$ to the output register as the terminal.
+
+\paragraph{Program Encoding.}
+
+Program encoding follows directly from register encoding: we iterate over the
+input program. Unlike register encodings, though, we must place a delimiter
+at exactly each occurance of $\#1$ in the program (and a final one at the end).
+To accomplish this, we perform the same encoding process as above, using three
+case operations that jump to each other to track whether the last-seen value
+is a $1$ or a $\#$ in order to add $\#\#$ when we have most recently read a $\#$
+and then find a $1$.
 
 \begin{lstlisting}
 toEncoding :: Reg -> Reg -> OneHash ()
@@ -169,34 +306,22 @@ toEncoding r r' = withLabels $ \ start end -> mdo
            add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
   comment "end encode function"
-
--- Generate the desired encoding of data, which
--- is slightly different than for code, which
--- will separate instructions by ##. This
--- converts the entire contents of rin to the
--- encoding and places a terminator at the end.
-toDataEncoding :: Reg -> Reg -> OneHash()
-toDataEncoding rin rout = do
-  comment $ printf
-              "encode data in %s into %s"
-              (show rin) (show rout)
-  loop' rin (add1 rout >> add1 rout)
-            (add1 rout >> addh rout)
-  addh rout
-  addh rout
-  comment "end data encoding"
 \end{lstlisting}
 
-\paragraph{Program Encoding.}
+To further explain this encoding, consider the example encoding when $p =
+\#\#\#\#\#1\#$, presented in \figref{fig:encode-prog}. 
 
-Program encoding follows directly from register encoding: ...
+[If time allows a FSA of this process]
+
 
 \paragraph{Decoding Entries.}
 
-Any register or program instruction may be decoded as...
-
+Decoding is the straight-forward inverse of encoding: when we see a $1$, we know
+the next character will be a $1$ or $\#$ indicating the original value, and thus
+case on the next character and produce the appropriate result in the output
+register. If we see a $\#$, we kno w we are at the terminal and so we consume
+the second $\#$ and complete the program. 
 \begin{lstlisting}
--- Decode one cell on an encoded tape
 decode :: Reg -> Reg -> OneHash ()
 decode rin rout = do
   start <- label
@@ -206,97 +331,74 @@ decode rin rout = do
                (addh rout >> start))
     (cases rin noop noop noop)
 \end{lstlisting}
+We only ever need to decode one cell at a time, and so this implementation is
+sufficient. This once again works using case statements, consuming the appropriate
+values and dispatching appropriates with the labels. The \lstinline{noop} form here
+is a no-op operation, indicating a ``filler'' operation since \lstinline{cases}
+requires \emph{something} in each case. The simplist definition of \lstinline{noop} is
+$1\#\#\#$.
 
 \section{Lookups and Updates}
 
-The lookup function copies the encoded sequence that it’s looking into and the
-index that it’s searching to into registers so that it can safely case on the
-index destroying everything upto the nth word. Then it decodes the nth word
-into another register and gets rid of the safety registers. 
-
-Example: 
-
-encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 11
-r1:
-r2:
-First Lookup copies the register containing the encoded sequence and the register with the index value to two new registers. 
- encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 11
-r1: 11\#\#1\#\#\#11\#\#
-r2 11
-
-The first thing that look up does it remove the first one from the new indexing register r2, so that the last word it destroys is the (n-1)th word.  
- encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 1
-r1: 11\#\#1\#\#\#11\#\#
-r2 1
-Then Lookup loops through (as a case on r2) decoding the words and clearing them.
- encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 11
-r1: 1\#\#\#11\#\#
-r2 
-r3:1
-encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 11
-r1: 1\#\#\#11\#\#
-r2:
-r3:
-Finally Lookup decodes the nth instruction into r out
- encoded reg: 11\#\#1\#\#\#11\#\#
-index reg: 11
-r1: 11\#\#
-r2 :
-rout:\#
-
-
-
+The lookup function retrives the $n^{th}$ sequence from an encoded sequence,
+copying the results into the output register. It also preserves inputs, and thus
+it starts by copying the encoded sequence and the index it is looking for into
+new registers (allocated from a pool of unused registers with the
+\lstinline{withRegs} form, which clears the newly-allocated register before and
+after usage). It then finds the $n^{th}$ word of the encoded sequence and
+decodes it into the appropriate output registers, cleaning up afterwards. This
+is done below, in the perhaps-misnamed \lstinline{lookupReg'}. The \lstinline{copy}
+form has the usual definition, \lstinline{loop} and \lstinline{decode} are as described
+above, and \lstinline{chomp} simply consumes a single character from the given register.
 
 \paragraph{Register Lookup.}
 
-Register lookup ...
-
-Lookup for registers is called on r4 r5 r6 while lookup for instructions is called on  r1 r2 r3
+Register lookup follows directly from the above definition, specialized to work on registers
+$R4$--$R6$, where $R4$ contains all registers, $R5$ contains the number of the register to
+look up, and $R6$ is where the result of the lookup is stored.
 
 \begin{lstlisting}
 lookupReg :: OneHash ()
 lookupReg = lookupReg' r4 r5 r6
-
-lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
-lookupReg' rin n rout = withRegs $
-  \ rin' n' -> do
-    -- Copy registers to preserve their contents
-    copy rin  rin'
-    copy n    n'
-    -- Convert to 0-indexing
-    chomp n'
-    -- Consume the first n things
-    loop' n' (decode rin' rout) noop
-    clear rout
-    -- Decode the current value into rout
-    decode rin' rout
 \end{lstlisting}
+
+\paragraph{Instruction Lookup.}
+
+Program lookup also follows directly from the above definition, specialized to
+work on registers $R1$--$R3$, where $R1$ contains the program, $R2$ contains
+the instruction number, and $R3$ is where the result of the lookup is stored.
+
+\begin{lstlisting}
+lookupInstr :: OneHash ()
+lookupInstr = withRegs $ \rtmp -> do
+  lookupReg' r1 r2 rtmp
+  reverseReg rtmp r3
+\end{lstlisting}
+
+Unlike register lookup, we must also reverse the instruction (see
+\lstinline{step} below), so we do that during instruction lookup.
 
 \paragraph{Register Update.}
 
-Update is very similar. 
-Like Lookup, it copies everything to a safe register and loops up to the
-(n-1)th word. However Update preserves what was encoded in a temporary register
-and eats the nth word. Lookup then encodes the register to be updated at the
-end of the temporary register. Finally Lookup moves what was left of the
-original encoded register to the end of the temporary register and moves the
-temporary to where encoded register was. (* I actually tried to word this well,
-but I’m not sure if it’s possible to make this not sound long and confusing*)
-
-(*a picture would be great like boxes moving around with arrows or something *)
-
-
-Register update...
+First, we note that we never need to update the program: it is fixed at the
+start of the run. We write a procedure that will update a single register, given a register value in $R6$, a number to update in $R5$, and the sequence of registers in $R4$.
 
 \begin{lstlisting}
 updateReg :: OneHash ()
 updateReg = updateReg' r4 r5 r6
+\end{lstlisting}
 
+Like the lookup procedures, it copies everything to ``safe'' registers and loops up to the
+$(n-1)^{th}$ word. Update preserves what was encoded via \lstinline{eatCell},
+however, into a temporary register.
+Then it deletes (or ``eats'') the the $n^{th}$ word.
+Next we encode the new register value (which is decoded in $R6$) and place it
+into the temporary register that contains the currently-seen cells. Finally we
+move what was left of the original encoded register to the end of the temporary
+register and moves the temporary to where encoded register was. 
+
+\begin{minipage}{.48\textwidth}
+\begin{lstlisting}
 updateReg' :: Reg -> Reg -> Reg -> OneHash ()
 updateReg' reg n val = withRegs $
   \ n' tmp -> do
@@ -329,24 +431,31 @@ eatCell rin rout = do
                (addh rout >> start))
     (cases rin noop noop noop)
 \end{lstlisting}
+\end{minipage}
 
-\paragraph{Instruction Lookup.}
-
-Program instruction lookup...
-
-\begin{lstlisting}
-lookupInstr :: OneHash ()
-lookupInstr = withRegs $ \rtmp -> do
-  lookupReg' r1 r2 rtmp
-  reverseReg rtmp r3
-\end{lstlisting}
+[*a picture would be great like boxes moving around with arrows or something *]
 
 \section{Program Steps}
 
-Since we know that instructions in one hash either manipulate a register or jump forwards or backwards in the program, we based our design for a step function on that. Step either simply adjust the line number index we are looking at or it manipulates the content of r6 according to the given instruction. 
+Since we know that instructions in \oh either manipulate a register or jump
+forwards or backwards in the program, we based our design for a step function on
+that. We parse the correct number of $\#$s (recall that the instruction is
+reversed before \lstinline{step} is run) and use combinations of
+\lstinline{lookupReg}, \lstinline{updateReg}, and \lstinline{move} and
+destructive subtraction \lstinline{subDestructive} (with their usual
+definitions) to do this. This procedure is provided in \figref{fig:step}. 
 
-In practice this is the same as manipulating the rn referred to in the instruction since we use lookup to find the encoded register and put it in r6 and update to put it back into the encoded sequence of registers. 
+Step either simply adjust the line number index we are looking at or it
+manipulates the content of $R6$ according to the given instruction. 
+In practice this is the same as manipulating the $Rn$ referred to in the
+instruction since we use lookup to find the encoded register and put it in $R6$
+and update to put it back into the encoded sequence of registers. 
 
+In the case that we must add a one or a hash to a
+register, we simply look it up, add the symbol, and then update it. For jumps,
+we simply adjust $R2$ by the appropriate amount, for for cases we look up the
+register, use \oh's case, and adjust $R2$ accordingly to jump to the correct
+line.
 
 \begin{figure*}
 \begin{lstlisting}
@@ -371,12 +480,42 @@ step = withLabels $ \ start end -> mdo
                                    (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
 \end{lstlisting}
-\caption{The main step relation for the universal \oh machine.}
+\caption{\label{fig:step}The main step relation for the universal \oh machine.}
 \end{figure*}
 
 \section{Main Loop}
 
-\begin{figure}
+The main loop of the program works in three parts: we initialize the
+application, which mostly just entails encoding the program for easy lookup.
+Next we begin a loop, looking up the instruction based on the program counter
+in $R2$. If we find an instruction, we run it and loop. If we do not, we
+are out of bounds of our instruction set and are thus done running.
+Here we don't case if our program is ``tidy'': we can run any program, halting
+the moment we step out of bounds. Finally we perform clean-up, placing the result
+in the correct place and clearing the other registers we have used.
+
+\paragraph{Initialization.}
+
+As descriped, initialization entails encoding the input program in $R1$ and
+replacing it back into $R1$.
+
+\begin{lstlisting}
+init :: OneHash ()
+init = do
+  toEncoding r1 r2
+  move r2 r1
+  add1 r2
+\end{lstlisting}
+
+\paragraph{Main Loop.}
+
+As described, the main loop looks up an instruction, compares it to a new
+register (guaranteed to be empty) to see if it exists, and runs the instruction
+if it is. The \lstinline{cmp} funcion does precisely that: in the case the two
+are equal it runs the first of the two instructions (in this case, a jump to
+the label \lstinline{end}), and otherwise it runs the second, which here falls
+through to the step procedure. After a step, it restarts the loop.
+
 \begin{lstlisting}
 mainLoop :: OneHash ()
 mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
@@ -389,26 +528,16 @@ mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   end <- label
   cleanup
 \end{lstlisting}
-\caption{The main loop of the universal \oh machine.}
-\end{figure}
 
-\paragraph{Initialization.}
-
-To initialize the program, we first...
-
-\begin{lstlisting}
-init :: OneHash ()
-init = do
-  toEncoding r1 r2
-  move r2 r1
-  add1 r2
-\end{lstlisting}
-
-\paragraph{Main Loop.}
 
 \paragraph{Cleanup and Final Answer.}
 
-To clean up the computation and provide the final result...
+To clean up the computation and provide the final result, we look up the
+contents of $R1$ in the simulated machine, move them into $R1$ in the real
+machine, and then clear registers $R2$-$R5$ (since $R6$ must be clear after the
+move operation).
+Then the program ends normally at the $n+1$ instruction line with the answer in
+$R1$.
 
 \begin{lstlisting}
 cleanup :: OneHash ()
@@ -425,6 +554,13 @@ cleanup = do
 \end{lstlisting}
 
 \section{Conclusion}
+
+This machine was a straight-forward encoding of the algorithm described,
+separated into a lookup step and an execution step. Encoding programs in the
+same way as registers allowed us to reuse much of the same machinery. While the
+Haskell implementation has grown large due to the usage of a domain-specific
+language and compilation process, this approach is sound and reliable even for
+hand-coded attempts at constructing the universal machine.
 
 \paragraph{Division of Labor.} The division of labor is as follows:
 \begin{itemize}
@@ -448,14 +584,34 @@ cleanup = do
       machine.
 \end{itemize}
 
+\begin{thebibliography}{99}
+
+\bibitem{moss}
+  Lawrence S. Moss,
+  \emph{\oh: a Text Register Machine Introduction to Computability Theory},
+  \lstinline{http://www.indiana.edu/~iulg/trm/index.shtml},
+  2015.
+
+\end{thebibliography}
+
 \clearpage
 
 \appendix
 
+\twocolumn[\section{Haskell Implementation}\lstinputlisting{U.Nocomm.1.hs}]
+
+\clearpage
+
+\twocolumn[\lstinputlisting{U.Nocomm.2.hs}]
+
+\clearpage
+
+\twocolumn[\lstinputlisting{U.Nocomm.3.hs}]
+
+\clearpage
+
 \section{Final Program}
 
-\input{app1}
-
-
+\lstinputlisting{U.formatted.oh}
 
 \end{document}

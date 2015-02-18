@@ -183,6 +183,7 @@ encode = unlines . map enc
     enc (ForwardF r)  = unary r ++ "###"
     enc (BackwardF r) = unary r ++ "####"
     enc (CaseF r)     = unary r ++ "#####"
+    enc (CommentF s)  = []
 
 encodeValue :: [Flattened] -> [Value]
 encodeValue = concatMap enc
