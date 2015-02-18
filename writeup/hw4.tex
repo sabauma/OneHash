@@ -10,8 +10,8 @@
 \usepackage{amsmath, listings, amsthm, amssymb, proof, mathabx}
 \usepackage{textcomp} \usepackage{seqsplit} \usepackage{tikz}
 \usepackage{fix2col} \usepackage{stmaryrd} \usepackage{url}
-\usepackage{scrextend} 
-\usepackage{xspace} 
+\usepackage{scrextend}
+\usepackage{xspace}
 
 \newtheorem{name}{Printed output}
 \newtheorem{defn}{Definition} \newtheorem{ex}{Example} \newtheorem{ans}{Answer}
@@ -24,10 +24,10 @@
 \setlength{\parskip}{1em}}
 {\end{addmargin}\setlength{\parskip}{0em}\begin{flushright}$\qed$\end{flushright}}
 
-\newcommand{\oh}{$1\#$\xspace} 
+\newcommand{\oh}{$1\#$\xspace}
 \renewcommand{\phi}{\varphi}
 \newcommand{\appref}[1]{Appendix \ref{#1}}
-%\lstset{basicstyle=\sffamily\footnotesize} 
+%\lstset{basicstyle=\sffamily\footnotesize}
 \lstset{
   language=Haskell,
   basicstyle=\sffamily\footnotesize,
@@ -36,13 +36,53 @@
   {<-}{{$\leftarrow$}}1
   {->}{{$\rightarrow$}}1
   {::}{{$:\!\,:$}}1
-} 
+}
 
-\begin{document} 
+\begin{document}
 
 \maketitle
 
 \section{Introduction and Overview}
+
+\section{Haskell Implementation}
+
+Rather than go through the tedious and error prone process of writing \oh code,
+we made use of a Haskell DSL (which we also developed) for composing \oh
+programs.
+The DSL contains many useful primitives for working with \oh registers at a high
+level of abstraction.
+\oh code is written in Haskell as a sequence of monadic actions which produce
+\oh register operations, jumps, and labels.
+Jump operations may only target labels.
+Once the program is fully expanded to this intermediate language, all jump
+operations are converted into forward and backwards \oh jump operations, and
+labels are eliminated.
+
+The primitive interface described above makes it possible to write high-level
+combinators which encode complex control flow structures in \oh (e.g. a case
+operation whose branches may contain an arbitrary number of instructions with
+intentional non-fall-through behaviour).
+Internally, these operations expand complex control flow into a linear sequence
+of labels, jumps, and \oh level case instructions.
+
+For example, consider the code for generating a \texttt{case} operation which
+reads from the given register and dispatches to the appropriate action based
+on the register's contents.
+\begin{lstlisting}
+cases :: Reg
+      -> OneHash () -- Empty register
+      -> OneHash () -- Got a 1
+      -> OneHash () -- Got a #
+      -> OneHash ()
+cases r c1 c2 c3 =
+    void $ mfix $ \ ~(j1, j2, jend) -> do
+    tell [Case r] >> j1 >> j2 >> c3 >> jend
+    liftA3 (,,) (label <* c1 <* jend)
+                (label <* c2)
+                label
+\end{lstlisting}
+Such primitives are used to generate more complex looping structures and high level
+operations like \texttt{clear}, \texttt{copy}, and \texttt{reverseReg}.
 
 \section{Encodings}
 
@@ -51,8 +91,8 @@
 \begin{lstlisting}
 toEncoding :: Reg -> Reg -> OneHash ()
 toEncoding r r' = withLabels $ \ start end -> mdo
-  comment $ printf 
-              "encode program in %s into %s" 
+  comment $ printf
+              "encode program in %s into %s"
               (show r) (show r')
   cases r (addh r' >> addh r' >> end)
           (add1 r' >> add1 r' >> oneloop)
@@ -63,22 +103,22 @@ toEncoding r r' = withLabels $ \ start end -> mdo
           (add1 r' >> addh r' >> hashloop)
   hashloop <- label
   cases r (addh r' >> addh r' >> end)
-          (addh r' >> addh r' >> 
+          (addh r' >> addh r' >>
            add1 r' >> add1 r' >> oneloop)
           (add1 r' >> addh r' >> hashloop)
   comment "end encode function"
 
--- Generate the desired encoding of data, which 
+-- Generate the desired encoding of data, which
 -- is slightly different than for code, which
--- will separate instructions by ##. This 
--- converts the entire contents of rin to the 
+-- will separate instructions by ##. This
+-- converts the entire contents of rin to the
 -- encoding and places a terminator at the end.
 toDataEncoding :: Reg -> Reg -> OneHash()
 toDataEncoding rin rout = do
-  comment $ printf 
-              "encode data in %s into %s" 
+  comment $ printf
+              "encode data in %s into %s"
               (show rin) (show rout)
-  loop' rin (add1 rout >> add1 rout) 
+  loop' rin (add1 rout >> add1 rout)
             (add1 rout >> addh rout)
   addh rout
   addh rout
@@ -99,8 +139,8 @@ decode :: Reg -> Reg -> OneHash ()
 decode rin rout = do
   start <- label
   cases rin noop
-    (cases rin noop 
-               (add1 rout >> start) 
+    (cases rin noop
+               (add1 rout >> start)
                (addh rout >> start))
     (cases rin noop noop noop)
 \end{lstlisting}
@@ -116,7 +156,7 @@ lookupReg :: OneHash ()
 lookupReg = lookupReg' r4 r5 r6
 
 lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
-lookupReg' rin n rout = withRegs $ 
+lookupReg' rin n rout = withRegs $
   \ rin' n' -> do
     -- Copy registers to preserve their contents
     copy rin  rin'
@@ -139,17 +179,17 @@ updateReg :: OneHash ()
 updateReg = updateReg' r4 r5 r6
 
 updateReg' :: Reg -> Reg -> Reg -> OneHash ()
-updateReg' reg n val = withRegs $ 
+updateReg' reg n val = withRegs $
   \ n' tmp -> do
     copy n n'
     chomp n'
     -- Seek to the desired register
-    loop' n' 
-          (eatCell reg tmp >> 
-           addh tmp >> 
-           addh tmp) 
+    loop' n'
+          (eatCell reg tmp >>
+           addh tmp >>
+           addh tmp)
           noop
-    -- Consume the current register 
+    -- Consume the current register
     -- and throw it away
     withRegs $ eatCell reg
     toDataEncoding val tmp
@@ -157,16 +197,16 @@ updateReg' reg n val = withRegs $
     move reg tmp
     move tmp reg
 
--- Eats a cell in the encoding, but does not 
--- decode it.  This will not save the trailing 
+-- Eats a cell in the encoding, but does not
+-- decode it.  This will not save the trailing
 -- termination character.
 eatCell :: Reg -> Reg -> OneHash ()
 eatCell rin rout = do
   start <- label
   cases rin noop
-    (add1 rout >> 
-     cases rin noop 
-               (add1 rout >> start) 
+    (add1 rout >>
+     cases rin noop
+               (add1 rout >> start)
                (addh rout >> start))
     (cases rin noop noop noop)
 \end{lstlisting}
@@ -186,26 +226,26 @@ lookupInstr = withRegs $ \rtmp -> do
 
 \begin{figure*}
 \begin{lstlisting}
-step :: OneHash () 
-step = withLabels $ \ start end -> mdo 
-  comment "begin step function" 
-  clear r5 
-  cases r3 end end  noop 
-  cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop 
-  cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop 
-  cases r3 end (add1 r5 >> move r3 r5 >> jumpadd end) noop 
-  cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop 
-  cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop 
-  comment "end step function" 
-    where 
-      write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end 
-      writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end 
-      jumpadd end = move r5 r2 >> end 
-      jumpsub end = subDestructive r2 r5 >> end 
-      caseh   end = lookupReg >> cases r6 (add1 r2) 
-                                   (add1 r2 >> add1 r2) 
-                                   (add1 r2 >> add1 r2 >> add1 r2) 
-                              >> updateReg >> end 
+step :: OneHash ()
+step = withLabels $ \ start end -> mdo
+  comment "begin step function"
+  clear r5
+  cases r3 end end  noop
+  cases r3 end (add1 r5 >> move r3 r5 >> write1  end) noop
+  cases r3 end (add1 r5 >> move r3 r5 >> writeh  end) noop
+  cases r3 end (add1 r5 >> move r3 r5 >> jumpadd end) noop
+  cases r3 end (add1 r5 >> move r3 r5 >> jumpsub end) noop
+  cases r3 end (add1 r5 >> move r3 r5 >> caseh   end) noop
+  comment "end step function"
+    where
+      write1  end = lookupReg >> add1 r6 >> updateReg >> add1 r2 >> end
+      writeh  end = lookupReg >> addh r6 >> updateReg >> add1 r2 >> end
+      jumpadd end = move r5 r2 >> end
+      jumpsub end = subDestructive r2 r5 >> end
+      caseh   end = lookupReg >> cases r6 (add1 r2)
+                                   (add1 r2 >> add1 r2)
+                                   (add1 r2 >> add1 r2 >> add1 r2)
+                              >> updateReg >> end
 \end{lstlisting}
 \caption{The main step relation for the universal \oh machine.}
 \end{figure*}
@@ -264,7 +304,7 @@ cleanup = do
 
 \paragraph{Division of Labor.} The division of labor is as follows:
 \begin{itemize}
-\item \textbf{Algorithmic Design.} 
+\item \textbf{Algorithmic Design.}
       Spenser Bauman, Tori Lewis, and Cameron Swords collectively developed the
       algorithm design and overall approach to implement the universal machine.
 \item \textbf{Haskell Framework.}
@@ -273,7 +313,7 @@ cleanup = do
       operations like \lstinline{clear} and \lstinline{move}. This
       implementation was extended by Spenser Bauman and Cameron Swords during
       implementation of the universal machine.
-\item \textbf{Running Code.} 
+\item \textbf{Running Code.}
       The Haskell implementation of the universal machine was constructed by
       Spenser Bauman (who write the encoding, decoding, and lookup mechanisms
       for registers) and Cameron Swords (the main step function and the main
@@ -281,7 +321,7 @@ cleanup = do
 \item \textbf{Write-Up.}
       The exposition of this report was developed by Tori Lewis, summarizing the
       results and explaining the final construction of the universal \oh
-      machine. 
+      machine.
 \end{itemize}
 
 \clearpage
