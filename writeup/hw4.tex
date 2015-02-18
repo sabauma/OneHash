@@ -44,6 +44,27 @@
 
 \section{Introduction and Overview}
 
+This is an explanation and outline of one implementation of a universal program
+in \oh. We aim to fully explain what our program does as well as the reasoning
+behind some unusual choices during the development of our program. 
+
+This universal program was developed using an embedding of 1# in Haskell
+developed by Spencer Bauman earlier in the course. This allowed us to use some
+of the comforts in Haskell, like notation and type declarations, so that
+sharing and understanding each others work was much easier. 
+
+The general idea we used was to encode both the input program and the input
+registers and their contents, then loop through the instructions of p using a
+lookup function, a step function, and an update function to manipulate the data
+in the encoded registers. 
+
+In the following sections we’ll explain how each of the major player in this
+program work, why they correct, provide the code (in Haskell), and, when
+needed, walk through an example. 
+
+The full \oh code, the Haskell code for embedding \oh, (*some other stuff*) are
+included in the appendix. 
+
 \section{Haskell Implementation}
 
 Rather than go through the tedious and error prone process of writing \oh code,
@@ -85,6 +106,47 @@ Such primitives are used to generate more complex looping structures and high le
 operations like \texttt{clear}, \texttt{copy}, and \texttt{reverseReg}.
 
 \section{Encodings}
+
+We chose to encode the input program as well as the input registers so that we could use the same lookup function and indexing on instruction lines that we would use for the encoded registers. 
+
+The encoding of registers is similar to the encoding for programs except that the \#\# marker is between registers instead of words. This is the exact method for encoding registers  that was provided in lecture. A more detailed explanation of register encoding is given by Larry Moss on the text register webpage. 
+
+The encoding for programs is done by adding a 1 before each symbol in a word and a \#\# between each word.  This is clearly and injective encoding, thus program content is preserved. 
+
+(insert picture Cam will draw in latex magic FTA of encoding) 
+
+Example: P= 11\#\#\#\#\#1\# 
+
+RIN: 11\#\#\#\#\#1\#
+ROUT: 
+Encode does a case on the register containing P
+Since the first thing it eats is a 1, it writes two 1’s to out register and does a second case on the register  P was in.
+RIN:  1\#\#\#\#\#1\#
+ROUT: 11
+Again,  since it eats another 1, it writes two 1s but this time it loops back to the start of this nested case. 
+RIN: \#\#\#\#\#1\#
+ROUT: 1111
+This time it eats a \#, so it writes a 1 followed by a \#. Then it does a second nested case on the same register P was in . 
+RIN: \#\#\#\#1\#
+ROUT: 11111\#
+Again it eats a \#, so it writes a 1 followed by a \#, and loops back to the start of this nested case statement. The step repeats until it eats all of the consecutive hashes. 
+RIN: \#\#\#1\#
+ROUT:11111\#1\#
+RIN:1\#
+ROUT:  11111\#1\#1\#1\#1\#
+When it eats a one after hashes, it writes two \#s followed by two 1s and does the first nested case statement (labeled one loop)
+RIN:\#
+ROUT: 11111\#1\#1\#1\#1\#\#\#11
+RIN: 
+ROUT: 11111\#1\#1\#1\#1\#\#\#11
+Since RIN is empty encode writes two \#s then ends. 
+RIN:
+ROUT:  11111\#1\#1\#1\#1\#\#\#11\#\#
+(*This example would look good in basically any other format*)
+
+Decoding is the straightforward inverse of encoding. 
+
+
 
 \paragraph{Register Encoding.}
 
@@ -147,9 +209,54 @@ decode rin rout = do
 
 \section{Lookups and Updates}
 
+The lookup function copies the encoded sequence that it’s looking into and the
+index that it’s searching to into registers so that it can safely case on the
+index destroying everything upto the nth word. Then it decodes the nth word
+into another register and gets rid of the safety registers. 
+
+Example: 
+
+encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 11
+r1:
+r2:
+First Lookup copies the register containing the encoded sequence and the register with the index value to two new registers. 
+ encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 11
+r1: 11\#\#1\#\#\#11\#\#
+r2 11
+
+The first thing that look up does it remove the first one from the new indexing register r2, so that the last word it destroys is the (n-1)th word.  
+ encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 1
+r1: 11\#\#1\#\#\#11\#\#
+r2 1
+Then Lookup loops through (as a case on r2) decoding the words and clearing them.
+ encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 11
+r1: 1\#\#\#11\#\#
+r2 
+r3:1
+encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 11
+r1: 1\#\#\#11\#\#
+r2:
+r3:
+Finally Lookup decodes the nth instruction into r out
+ encoded reg: 11\#\#1\#\#\#11\#\#
+index reg: 11
+r1: 11\#\#
+r2 :
+rout:\#
+
+
+
+
 \paragraph{Register Lookup.}
 
 Register lookup ...
+
+Lookup for registers is called on r4 r5 r6 while lookup for instructions is called on  r1 r2 r3
 
 \begin{lstlisting}
 lookupReg :: OneHash ()
@@ -171,6 +278,18 @@ lookupReg' rin n rout = withRegs $
 \end{lstlisting}
 
 \paragraph{Register Update.}
+
+Update is very similar. 
+Like Lookup, it copies everything to a safe register and loops up to the
+(n-1)th word. However Update preserves what was encoded in a temporary register
+and eats the nth word. Lookup then encodes the register to be updated at the
+end of the temporary register. Finally Lookup moves what was left of the
+original encoded register to the end of the temporary register and moves the
+temporary to where encoded register was. (* I actually tried to word this well,
+but I’m not sure if it’s possible to make this not sound long and confusing*)
+
+(*a picture would be great like boxes moving around with arrows or something *)
+
 
 Register update...
 
@@ -223,6 +342,11 @@ lookupInstr = withRegs $ \rtmp -> do
 \end{lstlisting}
 
 \section{Program Steps}
+
+Since we know that instructions in one hash either manipulate a register or jump forwards or backwards in the program, we based our design for a step function on that. Step either simply adjust the line number index we are looking at or it manipulates the content of r6 according to the given instruction. 
+
+In practice this is the same as manipulating the rn referred to in the instruction since we use lookup to find the encoded register and put it in r6 and update to put it back into the encoded sequence of registers. 
+
 
 \begin{figure*}
 \begin{lstlisting}
@@ -331,5 +455,7 @@ cleanup = do
 \section{Final Program}
 
 \input{app1}
+
+
 
 \end{document}
