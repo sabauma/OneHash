@@ -80,30 +80,6 @@ addBB r1 r2 result = withRegs $ \t1 t2 -> do
   copy r2 t2
   addBB' t1 t2 result
 
--- Save a register into the target register using a special encoding.
--- # -> ##
--- 1 -> #1
--- Stop -> 1
-save :: Reg -> Reg -> OneHash ()
-save source target = do
-  loop' source (addh target >> add1 target) (addh target >> addh target)
-  add1 target
-
--- Restore a register's contents which were saved using the @save@ function.
-restore :: Reg -> Reg -> OneHash ()
-restore source target = do
-  start <- label
-  cases source noop noop
-    (cases source noop (add1 target >> start) (addh target >> start))
-
--- Save all other registers to R15
--- saveAll :: OneHash ()
--- saveAll = mapM_ (`save` R15) [R1 .. R14]
-
--- Restore all registers from R15
--- restoreAll :: OneHash ()
--- restoreAll = mapM_ (restore R15) [R1 .. R14]
-
 clear12 :: OneHash ()
 clear12 = void $ mfix $ \ ~(clear1, clear2) -> do
   comment "dispatch table"

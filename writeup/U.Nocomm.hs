@@ -12,33 +12,6 @@ import           OneHash
 import           Phi           hiding (decode)
 import           Text.Printf
 
--- It's worth noting that if we "encode" the program via the operation
--- called toEncoding below, we can totally get away with using lookup
--- for both R4 and the program instructions in R1 by abstracting it a
--- bit more.
-----------------------------------------------------------------------------
--- Assumptions:
---
--- 0) The registers are as follows:
---      R1: the input program p
---      R2: an instruction number 1n
---      R3: the nth instruction of p
---      R4: the contents of all regsiters, encoded as above
---
--- 1) It uses R5 as the register being manipulated (denoted as n below)
---
--- 2) lookupReg will look up the nth register and place it in R6, preserving
---    R5
---
--- 3) updateReg will update up the nth register with the value in R6
---
--- 4) The program is pre-parsed into:
---      1^n#     => #1^n
---      1^n##    => ##11^n
---      1^n###   => ###1^n
---      1^n####  => ####1^n
---      1^n##### => #####1^n
---
 step :: OneHash ()
 step = withLabels $ \ start end -> mdo
   comment "begin step function"
@@ -60,13 +33,6 @@ step = withLabels $ \ start end -> mdo
                                    (add1 r2 >> add1 r2 >> add1 r2)
                               >> updateReg >> end
 
-----------------------------------------------------------------------------
--- Turns a register r into the encoded version via r7 as:
--- 1     => 11
--- #     => 1#
--- empty => ##
--- This program will also separate strings of 1^n#^m via ##, such as
--- 1#1# => 111# ## 111#
 toEncoding :: Reg -> Reg -> OneHash ()
 toEncoding r r' = withLabels $ \ start end -> mdo
   comment $ printf "encode program in %s into %s" (show r) (show r')
@@ -83,10 +49,6 @@ toEncoding r r' = withLabels $ \ start end -> mdo
           (add1 r' >> addh r' >> hashloop)
   comment "end encode function"
 
--- Generate the desired encoding of data, which is slightly different than for
--- code, which will separate instructions by ##.
--- This converts the entire contents of rin to the encoding and places
--- a terminatior at the end.
 toDataEncoding :: Reg -> Reg -> OneHash()
 toDataEncoding rin rout = do
   comment $ printf "encode data in %s into %s" (show rin) (show rout)
@@ -95,7 +57,6 @@ toDataEncoding rin rout = do
   addh rout
   comment "end data encoding"
 
--- Decode one cell on an encoded tape
 decode :: Reg -> Reg -> OneHash ()
 decode rin rout = do
   start <- label
@@ -103,8 +64,6 @@ decode rin rout = do
     (cases rin noop (add1 rout >> start) (addh rout >> start))
     (cases rin noop noop noop)
 
--- Eats a cell in the encoding, but does not decode it.
--- This will not save the trailing termination character.
 eatCell :: Reg -> Reg -> OneHash ()
 eatCell rin rout = do
   start <- label
@@ -112,24 +71,16 @@ eatCell rin rout = do
     (add1 rout >> cases rin noop (add1 rout >> start) (addh rout >> start))
     (cases rin noop noop noop)
 
-----------------------------------------------------------------------------
--- Should look at r4 and find the nth register where r5 = 1^n
--- and place the resulting register in r6. It should also preserve
--- r5 maybe.
 lookupReg :: OneHash ()
 lookupReg = lookupReg' r4 r5 r6
 
 lookupReg' :: Reg -> Reg -> Reg -> OneHash ()
 lookupReg' rin n rout = withRegs $ \rin' n' -> do
-  -- Copy registers to preserve their contents
   copy rin  rin'
   copy n    n'
-  -- Convert to 0-indexing
   chomp n'
-  -- Consume the first n things
   loop' n' (decode rin' rout) noop
   clear rout
-  -- Decode the current value into rout
   decode rin' rout
 
 lookupInstr :: OneHash ()
@@ -137,9 +88,6 @@ lookupInstr = withRegs $ \rtmp -> do
   lookupReg' r1 r2 rtmp
   reverseReg rtmp r3
 
-----------------------------------------------------------------------------
--- Should update the nth register of r4 with the value in r6 where
--- r5 = 1^n
 updateReg :: OneHash ()
 updateReg = updateReg' r4 r5 r6
 
@@ -155,27 +103,6 @@ updateReg' regSet n val = withRegs $ \n' tmp -> do
   -- Move everything back
   move regSet tmp
   move tmp regSet
-
-testLookup :: OneHash ()
-testLookup = do
-  forM_ [1 .. 10] (\i -> replicateM_ i (add1 r1) >> addh r1)
-  toEncoding r1 r2
-  replicateM_ 4 (add1 r3)
-  lookupReg' r2 r3 r4
-
-testUpdate :: OneHash ()
-testUpdate = do
-  forM_ [1 .. 10] $ \i -> replicateM_ i (add1 r1) >> addh r1
-  toEncoding r1 r2
-  replicateM_ 10 $ add1 r3 >> updateReg' r2 r3 r4
-
-test1 = phi (compileValue testLookup) []
-test2 = phi (compileValue testUpdate) []
-test3 = phi (compileValue $ updateReg' r1 r2 r3 >> updateReg' r1 r4 r5) [[], [One, One, One], [Hash]]
-test4 = phi (compileValue $ lookupReg' r1 r2 r3) [[Hash, Hash, One, Hash, Hash, Hash], [One, One]]
-
-
-----------------------------------------------------------------------------
 
 init :: OneHash ()
 init = do
@@ -195,6 +122,15 @@ cleanup = do
   clear r4
   clear r5
 
+-- R1: the input program p
+-- R2: an instruction number 1n
+-- R3: the nth instruction of p
+-- R4: the contents of all regsiters, encoded as above
+-- R5: the register to be manipulated (a number)
+-- R6: lookupReg puts it here
+
+
+
 mainLoop :: OneHash ()
 mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   init
@@ -206,14 +142,6 @@ mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   end <- label
   cleanup
 
--- R1: the input program p
--- R2: an instruction number 1n
--- R3: the nth instruction of p
--- R4: the contents of all regsiters, encoded as above
--- R5: the register to be manipulated (a number)
--- R6: lookupReg puts it here
-
--- Pick an action depending on whether or not two things are equal
 cmp :: Reg -> Reg -> OneHash () -> OneHash () -> OneHash ()
 cmp a b eq neq = withRegs $ \s1 s2 -> do
   copy a s1
