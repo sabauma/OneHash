@@ -166,7 +166,7 @@ encodeValue = concatMap enc
     enc (ForwardF r)  = unary r ++ [Hash, Hash, Hash]
     enc (BackwardF r) = unary r ++ [Hash, Hash, Hash, Hash]
     enc (CaseF r)     = unary r ++ [Hash, Hash, Hash, Hash, Hash]
-    enc (CommentF s)  = []
+    enc (CommentF _)  = []
 
 execOneHash :: OneHash a -> [Flattened]
 execOneHash = computeAddrs . runASM
