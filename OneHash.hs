@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE TypeFamilies               #-}
 module OneHash
   ( Reg
   , Scratches (..)
@@ -230,8 +231,6 @@ data OneHashState = OneHashState
 newtype OneHash a = OneHash { unHash :: StateT OneHashState (Writer [Instruction]) a }
   deriving (Functor, Applicative, Monad, MonadState OneHashState, MonadWriter [Instruction], MonadFix)
 
-
-
 runASM :: OneHash a -> Instructions
 runASM = execWriter . flip evalStateT initial . unHash
   where
@@ -326,20 +325,23 @@ pushReg r = modify $ \st -> st { temps = r : temps st }
 
 -- Allocate a single register from the scratch pool and supply it to the
 -- given function.
-withScratchRegister :: (Reg -> OneHash a) -> OneHash ()
-withScratchRegister f = popReg >>= \r -> f r >> pushReg r
+withScratchRegister :: (Reg -> OneHash a) -> OneHash a
+withScratchRegister f = popReg >>= \r -> f r <* pushReg r
 
 class Scratches a where
-  withRegs  :: a -> OneHash ()
+  type Result a :: *
+  withRegs  :: a -> OneHash (Result a)
   -- Variant which does not ensure that the scratch register is empty.
-  withRegs' :: a -> OneHash ()
+  withRegs' :: a -> OneHash (Result a)
 
 instance Scratches (OneHash a) where
-  withRegs  = void
-  withRegs' = void
+  type Result (OneHash a) = a
+  withRegs  = id
+  withRegs' = id
 
 instance Scratches b => Scratches (Reg -> b) where
-  withRegs f = withScratchRegister $ \r -> withRegs (f r) >> clear r
+  type Result (Reg -> b) = Result b
+  withRegs f = withScratchRegister $ \r -> withRegs (f r) <* clear r
   withRegs'  = withScratchRegister . (withRegs' .)
 
 
