@@ -82,7 +82,7 @@ scratchRegisters = [Reg 10 .. ]
 regIndex :: Reg -> Int
 regIndex (Reg i) = i
 
-data Ins
+data Instruction
   = Add1 Reg
   | AddH Reg
   | Label String
@@ -91,7 +91,7 @@ data Ins
   | Comment String
   deriving Show
 
-type Instructions = [Ins]
+type Instructions = [Instruction]
 
 data Flattened
   = Add1F Int
@@ -106,13 +106,8 @@ isComment :: Flattened -> Bool
 isComment CommentF{} = True
 isComment _          = False
 
-computeMapping :: Instructions -> [(String, Int)]
-computeMapping = mapMaybe f . enumInstructions
-  where
-    f (n, Label v) = Just (v, n)
-    f _            = Nothing
 
-enumInstructions :: Instructions -> [(Int, Ins)]
+enumInstructions :: Instructions -> [(Int, Instruction)]
 enumInstructions ys = unfoldr f (ys, 1)
   where
     incr Label{}   = 0
@@ -121,6 +116,12 @@ enumInstructions ys = unfoldr f (ys, 1)
 
     f ([],   _) = Nothing
     f (i:is, n) = Just ((n, i), (is, incr i + n))
+
+computeMapping :: Instructions -> [(String, Int)]
+computeMapping = mapMaybe f . enumInstructions
+  where
+    f (n, Label v) = Just (v, n)
+    f _            = Nothing
 
 lookupFail :: Eq a => a -> [(a, b)] -> b
 lookupFail = (fromJust .) . lookup
@@ -156,12 +157,12 @@ encode' = foldr (++) "" . map enc
     enc (CaseF r)     = unary r ++ "#####"
     enc (CommentF s)  = ";; " ++ s
 
+-- Encode operation which generates fancy LaTeX instructions
 encode'' :: [Flattened] -> String
--- encode'' = foldr (++) "" . map enc
 encode'' = unlines . map enc
   where
     unary :: Int -> String
-    unary n = "1^{" ++ (show n) ++ "}"
+    unary n = "1^{" ++ show n ++ "}"
 
     enc :: Flattened -> String
     enc (Add1F r)     = unary r ++ "#"
@@ -209,7 +210,7 @@ compile :: OneHash a -> String
 compile = encode . execOneHash
 
 compile' :: OneHash a -> String
-compile' = encode' . filter (not . isComment) . execOneHash
+compile'  = encode' . filter (not . isComment) . execOneHash
 compile'' = encode''  . execOneHash
 
 newtype Label = MkL { name :: String }
@@ -226,11 +227,13 @@ data OneHashState = OneHashState
 -- behave more like case statements in standard languages.
 -- This intermediate representation is then converted to a sequence of 1#
 -- instructions.
-newtype OneHash a = OneHash { unHash :: StateT OneHashState (Writer [Ins]) a }
-  deriving (Functor, Applicative, Monad, MonadState OneHashState, MonadWriter [Ins], MonadFix)
+newtype OneHash a = OneHash { unHash :: StateT OneHashState (Writer [Instruction]) a }
+  deriving (Functor, Applicative, Monad, MonadState OneHashState, MonadWriter [Instruction], MonadFix)
+
+
 
 runASM :: OneHash a -> Instructions
-runASM = runIdentity . execWriterT . flip evalStateT initial . unHash
+runASM = execWriter . flip evalStateT initial . unHash
   where
     initial = OneHashState { counter = 0, temps = scratchRegisters }
 
@@ -240,14 +243,6 @@ addh r = tell [AddH r]
 
 comment :: String -> OneHash ()
 comment s = tell [Comment s]
-
--- This is a slightly less compact encoding of case statements, though it
--- is slightly more simple.
--- cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
--- cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, j3, jend) -> do
---   -- Make a case statement with the 3 jumps directly after it
---   tell [Case r] >> j1 >> j2 >> j3
---   (,,,) <$> mkClause c1 jend <*> mkClause c2 jend <*> mkClause c3 jend <*> label
 
 cases :: Reg -> OneHash () -> OneHash () -> OneHash () -> OneHash ()
 cases r c1 c2 c3 = void $ mfix $ \ ~(j1, j2, jend) -> do
@@ -289,6 +284,11 @@ namedLabel nm = do
 label :: OneHash (OneHash ())
 label = namedLabel ""
 
+-- Emulate the with-labels operation found in William Byrd's solution.
+withLabels :: (OneHash () -> OneHash () -> OneHash ()) -> OneHash ()
+withLabels body = void $ mfix $ \ ~(start, end) ->
+  (,) <$> label <* body start end <*> label
+
 -- Produces a loop where the two function are called depending on which value
 -- is in the loop register.
 -- The actions supplied to each function correspond to continue and break
@@ -297,18 +297,15 @@ loop :: Reg                                      -- Loop control register
      -> (OneHash () -> OneHash () -> OneHash ()) -- Got a 1
      -> (OneHash () -> OneHash () -> OneHash ()) -- Got a #
      -> OneHash ()
-loop r one hash = void $ mfix $ \ ~(continue, break) -> do
-  continue' <- label
-  cases r break (one continue break >> continue) (hash continue break >> continue)
-  break'    <- label
-  return (continue', break')
+loop r one hash = withLabels $ \cont break ->
+  cases r break (one cont break >> cont) (hash cont break >> cont)
 
-k2 :: a -> b -> c -> a
-k2 = const . const
+k² :: a -> b -> c -> a
+k² = const . const
 
 -- Like `loop`, but the two conditions do not care about
 loop' :: Reg -> OneHash () -> OneHash () -> OneHash ()
-loop' r = loop r `on` k2
+loop' r = loop r `on` k²
 
 -- Loop on a register performing the same action disregarding the character
 -- from the loop control register.
@@ -345,10 +342,6 @@ instance Scratches b => Scratches (Reg -> b) where
   withRegs f = withScratchRegister $ \r -> withRegs (f r) >> clear r
   withRegs'  = withScratchRegister . (withRegs' .)
 
--- Emulate the with-labels operation found in William Byrd's solution.
-withLabels :: (OneHash () -> OneHash () -> OneHash ()) -> OneHash ()
-withLabels body = void $ mfix $ \ ~(start, end) ->
-  (,) <$> label <* body start end <*> label
 
 noop :: OneHash ()
 noop = return ()
@@ -430,7 +423,7 @@ getCharAt source target idx = withRegs $ \b1 b2 -> do
 -- pad.
 double :: Reg -> Reg -> OneHash ()
 double work s1 = do
-  loop work (k2 $ add1 s1 >> add1 s1) (\_ br -> br)
+  loop work (k² $ add1 s1 >> add1 s1) (\_ br -> br)
   move s1 work
 
 reverseReg :: Reg -> Reg -> OneHash ()

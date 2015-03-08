@@ -200,7 +200,7 @@ mainLoop = withRegs $ \ (emptyreg :: Reg) -> mdo
   init
   loop <- label
   lookupInstr
-  cmp r3 emptyreg (end) (noop)
+  cmp r3 emptyreg end noop
   step
   loop
   end <- label

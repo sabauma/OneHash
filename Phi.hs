@@ -90,6 +90,6 @@ extract :: State -> [Value]
 extract st = toList $ st M.! 1
 
 runPhi :: OneHash a -> [String] -> State
-runPhi p regs = phi (compileValue p) $ map (\ x -> map fromChar x) regs 
+runPhi p regs = phi (compileValue p) $ map (map fromChar) regs
 
 
