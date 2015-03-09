@@ -129,10 +129,7 @@ lookupFail = (fromJust .) . lookup
 
 -- Compute the absolute jump locations from the specification given here
 computeAddrs :: Instructions -> [Flattened]
-computeAddrs xs = concat
-                $ snd
-                $ mapAccumL wrapped 0
-                $ enumInstructions xs
+computeAddrs xs = concat $ snd $ mapAccumL wrapped 0 $ enumInstructions xs
   where
     relativizeLabel off n (Jump x)
       | m > n                        = [ForwardF  (m - n + off)]
