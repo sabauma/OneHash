@@ -136,7 +136,7 @@ computeAddrs xs = concat
   where
     relativizeLabel off n (Jump x)
       | m > n                        = [ForwardF  (m - n + off)]
-      | n < m                        = [BackwardF (n - m + off)]
+      | m < n                        = [BackwardF (n - m + off)]
       | otherwise                    = [ForwardF 1, BackwardF 1] -- Preserve non-termination
       where m = lookupFail x mapping
     relativizeLabel _ _ (Case r)     = [CaseF (regIndex r)]
