@@ -145,7 +145,7 @@ computeAddrs xs = concat
     relativizeLabel _ _ (Comment s)  = [CommentF s]
     relativizeLabel _ _ _            = []
 
-    wrapped acc (n, ins) = (acc + length r, r)
+    wrapped acc (n, ins) = (acc + length r - 1, r)
       where r = relativizeLabel acc n ins
 
     -- Maps labels to instruction indices
