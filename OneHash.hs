@@ -44,7 +44,7 @@ import           Control.Monad.Identity (runIdentity)
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Function          (on)
-import           Data.List              (unfoldr)
+import           Data.List              (unfoldr, mapAccumL)
 import           Data.Maybe             (fromJust, mapMaybe)
 import           Prelude                hiding (break)
 import           Text.Printf            (printf)
@@ -129,17 +129,24 @@ lookupFail = (fromJust .) . lookup
 
 -- Compute the absolute jump locations from the specification given here
 computeAddrs :: Instructions -> [Flattened]
-computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
+computeAddrs xs = concat
+                $ snd
+                $ mapAccumL wrapped 0
+                $ enumInstructions xs
   where
-    relativizeLabel n (Jump x)
-      | m > n                        = [ForwardF  (m - n)]
-      | otherwise                    = [BackwardF (n - m)]
+    relativizeLabel off n (Jump x)
+      | m > n                        = [ForwardF  (m - n + off)]
+      | n < m                        = [BackwardF (n - m + off)]
+      | otherwise                    = [ForwardF 1, BackwardF 1] -- Preserve non-termination
       where m = lookupFail x mapping
-    relativizeLabel _ (Case r)       = [CaseF (regIndex r)]
-    relativizeLabel _ (Add1 r)       = [Add1F (regIndex r)]
-    relativizeLabel _ (AddH r)       = [AddHF (regIndex r)]
-    relativizeLabel _ (Comment s)    = [CommentF s]
-    relativizeLabel _ _              = []
+    relativizeLabel _ _ (Case r)     = [CaseF (regIndex r)]
+    relativizeLabel _ _ (Add1 r)     = [Add1F (regIndex r)]
+    relativizeLabel _ _ (AddH r)     = [AddHF (regIndex r)]
+    relativizeLabel _ _ (Comment s)  = [CommentF s]
+    relativizeLabel _ _ _            = []
+
+    wrapped acc (n, ins) = (acc + length r, r)
+      where r = relativizeLabel acc n ins
 
     -- Maps labels to instruction indices
     mapping = computeMapping xs
@@ -325,6 +332,8 @@ pushReg r = modify $ \st -> st { temps = r : temps st }
 
 -- Allocate a single register from the scratch pool and supply it to the
 -- given function.
+-- Users must take care to never return a register from this function, doing
+-- so will have unexpected results in the generated program.
 withScratchRegister :: (Reg -> OneHash a) -> OneHash a
 withScratchRegister f = popReg >>= \r -> f r <* pushReg r
 
@@ -343,7 +352,6 @@ instance Scratches b => Scratches (Reg -> b) where
   type Result (Reg -> b) = Result b
   withRegs f = withScratchRegister $ \r -> withRegs (f r) <* clear r
   withRegs'  = withScratchRegister . (withRegs' .)
-
 
 noop :: OneHash ()
 noop = return ()
@@ -374,7 +382,7 @@ move source target = loop' source (add1 target) (addh target)
 
 -- Fill a counter register with a given number of 1's
 fillCounter :: Reg -> Int -> OneHash ()
-fillCounter r n = void $ replicateM n (add1 r)
+fillCounter r n = replicateM_ n (add1 r)
 
 add' :: Reg -> Reg -> Reg -> Reg -> OneHash ()
 add' n m result scratch = copy' n result scratch >> copy' m result scratch
