@@ -44,7 +44,7 @@ import           Control.Monad.Identity (runIdentity)
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Function          (on)
-import           Data.List              (unfoldr, mapAccumL)
+import           Data.List              (unfoldr)
 import           Data.Maybe             (fromJust, mapMaybe)
 import           Prelude                hiding (break)
 import           Text.Printf            (printf)
@@ -129,21 +129,17 @@ lookupFail = (fromJust .) . lookup
 
 -- Compute the absolute jump locations from the specification given here
 computeAddrs :: Instructions -> [Flattened]
-computeAddrs xs = concat $ snd $ mapAccumL wrapped 0 $ enumInstructions xs
+computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
   where
-    relativizeLabel off n (Jump x)
-      | m > n                        = [ForwardF  (m - n + off)]
-      | m < n                        = [BackwardF (n - m + off)]
-      | otherwise                    = [ForwardF 1, BackwardF 1] -- Preserve non-termination
+    relativizeLabel n (Jump x)
+      | m > n                        = [ForwardF  (m - n)]
+      | otherwise                    = [BackwardF (n - m)]
       where m = lookupFail x mapping
-    relativizeLabel _ _ (Case r)     = [CaseF (regIndex r)]
-    relativizeLabel _ _ (Add1 r)     = [Add1F (regIndex r)]
-    relativizeLabel _ _ (AddH r)     = [AddHF (regIndex r)]
-    relativizeLabel _ _ (Comment s)  = [CommentF s]
-    relativizeLabel _ _ _            = []
-
-    wrapped acc (n, ins) = (acc + length r - 1, r)
-      where r = relativizeLabel acc n ins
+    relativizeLabel _ (Case r)       = [CaseF (regIndex r)]
+    relativizeLabel _ (Add1 r)       = [Add1F (regIndex r)]
+    relativizeLabel _ (AddH r)       = [AddHF (regIndex r)]
+    relativizeLabel _ (Comment s)    = [CommentF s]
+    relativizeLabel _ _              = []
 
     -- Maps labels to instruction indices
     mapping = computeMapping xs
