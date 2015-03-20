@@ -3,6 +3,8 @@ module Test where
 
 import           Phi
 import           OneHash
+import           U
+import           Control.Monad
 
 program = map fromChar "1#1#1#1##1#####111###11###1###"
 
@@ -41,7 +43,7 @@ k''' = φ [] k''
 
 ps = iterate (φ []) q
 
-main = print $ k'' == k'''
+main = print $ phi (compileValue mainLoop) [φ write' diag' ++ diag']
 
 -- example  = φ [] $ φ program pgm
 -- example2 = φ write' $ compileValue diag

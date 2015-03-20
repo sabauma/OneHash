@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ViewPatterns               #-}
 module OneHash
   ( Reg
   , Scratches (..)
@@ -43,7 +44,9 @@ import           Control.Monad.Identity (runIdentity)
 import           Control.Monad.State
 import           Control.Monad.Writer
 import           Data.Function          (on)
-import           Data.List              (unfoldr)
+import           Data.List              (foldl', unfoldr)
+import           Data.Hashable
+import qualified Data.HashMap.Strict    as M
 import           Data.Maybe             (fromJust, mapMaybe)
 import           Prelude                hiding (break)
 import           Text.Printf            (printf)
@@ -88,6 +91,7 @@ data Ins
   | Label String
   | Jump String
   | Case Reg
+  | Nop
   | Comment String
   deriving Show
 
@@ -102,15 +106,17 @@ data Flattened
   | CommentF String
   deriving Show
 
+type LabelMapping = M.HashMap String Int
+
 isComment :: Flattened -> Bool
 isComment CommentF{} = True
 isComment _          = False
 
-computeMapping :: Instructions -> [(String, Int)]
-computeMapping = mapMaybe f . enumInstructions
+computeMapping :: Instructions -> LabelMapping
+computeMapping = foldl' f M.empty . enumInstructions
   where
-    f (n, Label v) = Just (v, n)
-    f _            = Nothing
+    f acc (n, Label v) = M.insert v n acc
+    f acc _            = acc
 
 enumInstructions :: Instructions -> [(Int, Ins)]
 enumInstructions ys = unfoldr f (ys, 1)
@@ -122,12 +128,28 @@ enumInstructions ys = unfoldr f (ys, 1)
     f ([],   _) = Nothing
     f (i:is, n) = Just ((n, i), (is, incr i + n))
 
-lookupFail :: Eq a => a -> [(a, b)] -> b
-lookupFail = (fromJust .) . lookup
+lookupFail :: (Eq a, Hashable a) => a -> M.HashMap a b -> b
+lookupFail = (fromJust .) . M.lookup
+
+-- Eliminate zero-length jumps from the program by inserting a no-op operation
+-- into the program before any jumps that go backwards to themselves.
+-- It is not actually possible to express such a thing in OneHash, but is
+-- possible in the DSL, so we handle it gracefully by lengthening the jump
+-- length to 1 with a no-op.
+fixupZeroJumps :: Instructions -> Instructions
+fixupZeroJumps xs = concatMap (uncurry f) $ enumInstructions xs
+  where
+    f n ins@(Jump x)
+      | m == n    = [Nop, ins]
+      where m = lookupFail x mapping
+    f n ins       = [ins]
+
+    mapping = computeMapping xs
 
 -- Compute the absolute jump locations from the specification given here
 computeAddrs :: Instructions -> [Flattened]
-computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
+computeAddrs (fixupZeroJumps -> xs) =
+  concatMap (uncurry relativizeLabel) $ enumInstructions xs
   where
     relativizeLabel n (Jump x)
       | m > n                        = [ForwardF  (m - n)]
@@ -137,6 +159,7 @@ computeAddrs xs = concatMap (uncurry relativizeLabel) $ enumInstructions xs
     relativizeLabel _ (Add1 r)       = [Add1F (regIndex r)]
     relativizeLabel _ (AddH r)       = [AddHF (regIndex r)]
     relativizeLabel _ (Comment s)    = [CommentF s]
+    relativizeLabel _ Nop            = [ForwardF 1]
     relativizeLabel _ _              = []
 
     -- Maps labels to instruction indices

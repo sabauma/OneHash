@@ -54,8 +54,9 @@ appendRegister s n v = M.insertWith (flip (S.><)) n (S.singleton v) s
 gobbleRegister :: State -> Int -> (Maybe Value, State)
 gobbleRegister s n =
   case S.viewl <$> M.lookup n s of
-       Just (v S.:< seq) -> (Just v , M.insert n seq s)
-       _                 -> (Nothing, s)
+       Just (v S.:< seq) | S.null seq -> (Just v , M.delete n s)
+                         | otherwise  -> (Just v , M.insert n seq s)
+       _                              -> (Nothing, s)
 
 offset :: Maybe Value -> Int
 offset Nothing     = 1
@@ -64,6 +65,7 @@ offset (Just Hash) = 3
 
 phi :: [Value] -> [[Value]] -> State
 phi p st = phi' (decode p) (M.fromList $ zip [1 ..] $ map S.fromList st)
+{-# INLINE phi #-}
 
 phi' :: Program -> State -> State
 phi' p = go 0
@@ -85,11 +87,12 @@ phi' p = go 0
              Forward  -> (n + r, s)
              Backward -> (n - r, s)
              Cases    -> let (g, s') = gobbleRegister s r in (n + offset g, s')
+{-# INLINE phi' #-}
 
 extract :: State -> [Value]
 extract st = toList $ st M.! 1
 
 runPhi :: OneHash a -> [String] -> State
-runPhi p regs = phi (compileValue p) $ map (\ x -> map fromChar x) regs 
+runPhi p = phi (compileValue p) . map (map fromChar)
 
 
