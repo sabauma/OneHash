@@ -78,7 +78,7 @@ r9 = Reg 9
 reg :: Int -> Reg
 reg = Reg
 
--- | We treat the first 5 registers as general user registers and the rest are
+-- | We treat the first 9 registers as general user registers and the rest are
 -- used for scratch space by the register allocator functions below.
 scratchRegisters :: [Reg]
 scratchRegisters = [Reg 10 .. ]
